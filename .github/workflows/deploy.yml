@@ -31,6 +31,14 @@ jobs:
           ref: main
           persist-credentials: false
 
+      - name: Preparar Node.js
+        uses: actions/setup-node@v4
+        with:
+          node-version: '22'
+
+      - name: Validar catálogo e comparações
+        run: npm run check && npm test
+
       - name: Validar configuracao de publicacao
         shell: bash
         env:
