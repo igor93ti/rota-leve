@@ -43,7 +43,9 @@
   }
 
   function activeOffers() {
-    const today = new Intl.DateTimeFormat('en-CA', { timeZone: 'America/Sao_Paulo', year: 'numeric', month: '2-digit', day: '2-digit' }).format(new Date());
+    const parts = new Intl.DateTimeFormat('en-CA', { timeZone: 'America/Sao_Paulo', year: 'numeric', month: '2-digit', day: '2-digit' }).formatToParts(new Date());
+    const component = (type) => parts.find((part) => part.type === type).value;
+    const today = `${component('year')}-${component('month')}-${component('day')}`;
     return data.offers.filter((offer) => {
       if (offer.validUntil && new Date(offer.validUntil).valueOf() < Date.now()) return false;
       if (/^\d{4}-\d{2}-\d{2}$/.test(offer.departureDate) && offer.departureDate < today) return false;
@@ -104,9 +106,12 @@
     $('#metricMiles').innerHTML = miles.length ? `${integer(Math.min(...miles.map((offer) => Number(offer.price))))} <small>pts</small>` : '—';
     const sources = new Set(offers.map((offer) => offer.sourceName).filter(Boolean));
     $('#metricSources').innerHTML = `${sources.size} <small>${sources.size === 1 ? 'fonte' : 'fontes'}</small>`;
-    if (data.run?.enabled === true && Array.isArray(data.run.schedule)) {
-      $('#metricScheduleLabel').textContent = 'Coletas programadas';
-      $('#metricSources').innerHTML = `${data.run.schedule.length}× <small>ao dia</small>`;
+    const schedule = data.run?.schedule;
+    if (schedule && Array.isArray(schedule.times) && schedule.times.length) {
+      $('#metricScheduleLabel').textContent = schedule.enabled === true ? 'Coletas programadas' : 'Programação preparada';
+      $('#metricSources').innerHTML = `${schedule.times.length}× <small>ao dia</small>`;
+    } else {
+      $('#metricScheduleLabel').textContent = 'Fontes consultadas';
     }
     $('#updatedLabel').textContent = data.updatedAt ? `Radar atualizado em ${timestamp(data.updatedAt)}` : loadError ? 'Radar indisponível no momento' : 'Aguardando primeira coleta';
     $('#coverageSummary').textContent = data.coverage?.summary || 'A cobertura varia por fonte. Cada preço inclui um link para consultar os detalhes e a disponibilidade.';
@@ -137,7 +142,7 @@
     const image = photographs[offer.destination] || photographs.default;
     const url = safeUrl(offer.sourceUrl);
     const stops = offer.reposition ? `via ${offer.reposition.via}` : offer.stops === 0 ? 'Voo direto' : Number.isInteger(offer.stops) ? `${offer.stops} ${offer.stops === 1 ? 'conexão' : 'conexões'}` : 'Ver itinerário';
-    const taxes = offer.taxes === null || offer.taxes === undefined ? 'Taxas: confira na fonte' : offer.taxes === 0 ? 'Taxas incluídas' : `+ ${money(offer.taxes)} em taxas`;
+    const taxes = offer.taxes === null || offer.taxes === undefined ? 'Taxas: confira na fonte' : offer.taxes === 0 ? miles ? 'Taxas informadas: R$ 0,00' : 'Taxas incluídas' : `+ ${money(offer.taxes)} em taxas`;
     const priceHtml = miles ? `${integer(offer.price)}<span class="price-unit">${escape(offer.unit || 'pts')}</span>` : `<span class="currency">R$</span>${escape(new Intl.NumberFormat('pt-BR', { minimumFractionDigits: 2, maximumFractionDigits: 2 }).format(offer.price))}`;
     const trip = offer.tripType === 'roundtrip' ? 'Ida e volta' : 'Só ida';
     const tripDates = `${date(offer.departureDate)}${offer.returnDate ? ` → ${date(offer.returnDate)}` : ''}`;
@@ -201,7 +206,9 @@
     }
     const outbound = date(offer.departureDate, true);
     const dates = offer.returnDate ? `${outbound} a ${date(offer.returnDate, true)}` : outbound;
-    openDialog(`<h2>${escape(cityNames[offer.origin] || offer.origin)} <span style="color:#9eb4af">→</span> ${escape(destination)}</h2><p>${escape(offer.airline)} · ${offer.tripType === 'roundtrip' ? 'Ida e volta' : 'Somente ida'} · ${escape(offer.origin)} → ${escape(offer.destination)}</p><div class="dialog-price">${escape(totalPrice)}</div><div class="detail-grid"><div><span>Quando viajar</span><strong>${escape(dates)}</strong></div><div><span>Forma de pagamento</span><strong>${miles ? escape(offer.program || 'Milhas') : 'Dinheiro · BRL'}</strong></div><div><span>Taxas</span><strong>${offer.taxes === null || offer.taxes === undefined ? 'Conferir na fonte' : offer.taxes === 0 ? 'Incluídas no preço' : escape(money(offer.taxes))}</strong></div><div><span>Itinerário</span><strong>${offer.stops === 0 ? 'Voo direto' : Number.isInteger(offer.stops) ? `${escape(offer.stops)} ${offer.stops === 1 ? 'conexão' : 'conexões'}` : 'Confirmar horários e conexões'}</strong></div><div><span>Fonte</span><strong>${escape(offer.sourceName || 'Fonte da oferta')}</strong></div><div><span>Última observação · Brasília</span><strong>${escape(timestamp(offer.observedAt))}</strong></div></div><h3>${offer.availability === 'verified' ? 'Disponibilidade consultada' : 'Preço anunciado pela fonte'}</h3><p>${offer.availability === 'verified' ? 'A disponibilidade foi consultada na data indicada e pode mudar a qualquer momento.' : 'Este valor foi encontrado em uma publicação ou página de ofertas. Ele pode ter disponibilidade limitada e não representa uma reserva ou confirmação de disponibilidade no pagamento.'}</p>${offer.notes ? `<p>${escape(offer.notes)}</p>` : ''}${positioning}<p class="detail-note">Confira o preço final, regras da tarifa, taxas e franquia de bagagem na fonte. Valores em milhas variam por programa e não são comparados diretamente com valores em reais.</p><div class="dialog-footer">${url ? `<a class="source-link" href="${escape(url)}" target="_blank" rel="noopener noreferrer">Consultar ${escape(offer.sourceName || 'oferta')} <span>↗</span></a>` : ''}<small>O Rota Leve não vende passagens.</small></div>`, miles ? 'UM ACHADO EM MILHAS' : 'UM ACHADO EM DINHEIRO');
+    const sourceLinks = Array.isArray(offer.sourceLinks) ? offer.sourceLinks.filter((source) => safeUrl(source.url)) : [];
+    const legLinks = sourceLinks.length ? `<h3>Confira os trechos da comparação</h3><ul class="source-list">${sourceLinks.map((source) => `<li><a href="${escape(safeUrl(source.url))}" target="_blank" rel="noopener noreferrer">${escape(source.label || 'Consultar trecho')} ↗</a></li>`).join('')}</ul>` : '';
+    openDialog(`<h2>${escape(cityNames[offer.origin] || offer.origin)} <span class="dialog-route-arrow">→</span> ${escape(destination)}</h2><p>${escape(offer.airline)} · ${offer.tripType === 'roundtrip' ? 'Ida e volta' : 'Somente ida'} · ${escape(offer.origin)} → ${escape(offer.destination)}</p><div class="dialog-price">${escape(totalPrice)}</div><div class="detail-grid"><div><span>Quando viajar</span><strong>${escape(dates)}</strong></div><div><span>Forma de pagamento</span><strong>${miles ? escape(offer.program || 'Milhas') : 'Dinheiro · BRL'}</strong></div><div><span>Taxas</span><strong>${offer.taxes === null || offer.taxes === undefined ? 'Conferir na fonte' : offer.taxes === 0 ? miles ? 'Taxas informadas: R$ 0,00' : 'Incluídas no preço' : escape(money(offer.taxes))}</strong></div><div><span>Itinerário</span><strong>${offer.stops === 0 ? 'Voo direto' : Number.isInteger(offer.stops) ? `${escape(offer.stops)} ${offer.stops === 1 ? 'conexão' : 'conexões'}` : 'Confirmar horários e conexões'}</strong></div><div><span>Fonte</span><strong>${escape(offer.sourceName || 'Fonte da oferta')}</strong></div><div><span>Última observação · Brasília</span><strong>${escape(timestamp(offer.observedAt))}</strong></div></div><h3>${offer.availability === 'verified' ? 'Disponibilidade consultada' : 'Preço anunciado pela fonte'}</h3><p>${offer.availability === 'verified' ? 'A disponibilidade foi consultada na data indicada e pode mudar a qualquer momento.' : 'Este valor foi encontrado em uma publicação ou página de ofertas. Ele pode ter disponibilidade limitada e não representa uma reserva ou confirmação de disponibilidade no pagamento.'}</p>${offer.notes ? `<p>${escape(offer.notes)}</p>` : ''}${positioning}${legLinks}<p class="detail-note">Confira o preço final, regras da tarifa, taxas e franquia de bagagem na fonte. Valores em milhas variam por programa e não são comparados diretamente com valores em reais.</p><div class="dialog-footer">${url ? `<a class="source-link" href="${escape(url)}" target="_blank" rel="noopener noreferrer">Consultar ${escape(offer.sourceName || 'oferta')} <span>↗</span></a>` : ''}<small>O Rota Leve não vende passagens.</small></div>`, miles ? 'UM ACHADO EM MILHAS' : 'UM ACHADO EM DINHEIRO');
   }
 
   function showMethodology(section = 'all') {
@@ -211,9 +218,16 @@
       const url = typeof source === 'object' ? safeUrl(source.url || source.sourceUrl) : null;
       const detail = typeof source === 'object' ? source.coverage || source.description || source.message || '' : '';
       const status = typeof source === 'object' ? source.status : null;
-      return `<li>${url ? `<a href="${escape(url)}" target="_blank" rel="noopener noreferrer">${escape(name)} ↗</a>` : `<strong>${escape(name)}</strong>`}${status ? `<span class="source-status">${escape(status)}</span>` : ''}${detail ? `<br>${escape(detail)}` : ''}</li>`;
+      const statusLabels = { ok: 'Consultada', error: 'Falha na consulta', partial: 'Consulta parcial', stale: 'Consulta anterior', skipped: 'Não consultada', disabled: 'Desativada', pending: 'Aguardando consulta' };
+      const statusLabel = status ? statusLabels[status] || 'Estado da consulta indisponível' : '';
+      const count = typeof source === 'object' && Number.isFinite(source.count) ? ` · ${integer(source.count)} anúncios coletados` : '';
+      const error = typeof source === 'object' && source.error ? String(source.error) : '';
+      const http = error.match(/HTTP\s+(\d{3})/i)?.[1];
+      const errorLabel = error ? http === '404' ? 'A página da fonte não foi encontrada (404).' : http === '403' || http === '429' ? `A fonte limitou o acesso à consulta (${http}).` : http ? `A fonte respondeu com uma falha de consulta (${http}).` : 'Não foi possível obter novos preços desta fonte nesta coleta.' : '';
+      return `<li>${url ? `<a href="${escape(url)}" target="_blank" rel="noopener noreferrer">${escape(name)} ↗</a>` : `<strong>${escape(name)}</strong>`}${statusLabel ? `<span class="source-status">${escape(statusLabel)}</span>` : ''}${count ? `<span class="source-count">${escape(count)}</span>` : ''}${detail ? `<br>${escape(detail)}` : ''}${errorLabel ? `<br><span class="source-error">${escape(errorLabel)}</span>` : ''}</li>`;
     }).join('')}</ul>` : '';
-    const schedule = data.run?.enabled === true && Array.isArray(data.run.schedule) ? `<p>Janelas de coleta configuradas: ${escape(data.run.schedule.join(', '))}. Horário de Brasília. A execução pode atrasar conforme a disponibilidade do serviço.</p>` : '<p>O radar é atualizado quando uma coleta é concluída. O horário mostrado na página indica a última atualização do arquivo de ofertas.</p>';
+    const times = data.run?.schedule?.times;
+    const schedule = Array.isArray(times) && times.length ? `<p>${data.run.schedule.enabled === true ? 'Janelas de coleta configuradas' : 'Programação preparada, ainda não ativada'}: ${escape(times.join(', '))}. Horário de Brasília. ${data.run.schedule.enabled === true ? 'A execução pode atrasar conforme a disponibilidade do serviço.' : 'As atualizações recorrentes começam após a ativação da implantação e do serviço de coleta.'}</p>` : '<p>O radar é atualizado quando uma coleta é concluída. O horário mostrado na página indica a última atualização do arquivo de ofertas.</p>';
     const positioning = '<h3>Quando sair por outra cidade compensa?</h3><p>Somamos a passagem para o outro aeroporto, a viagem seguinte e custos adicionais como taxas, bagagem, transporte e hospedagem. A economia precisa continuar positiva em relação a uma alternativa comparável saindo da sua cidade.</p><p>Uma comparação só é publicada quando há preços, datas e horários suficientes para avaliar os trechos. Bilhetes separados não garantem proteção se o primeiro voo atrasar. O intervalo e os custos estimados aparecem nos detalhes.</p><p class="detail-note">Exemplo de caminho possível: Fortaleza → São Paulo → destino final. A ilustração da página explica a estratégia; não é uma oferta disponível.</p>';
     if (section === 'reposition') {
       openDialog(`<h2>Um caminho diferente pode valer a viagem.</h2>${positioning}`, 'NOVAS POSSIBILIDADES DE ROTA');
@@ -275,5 +289,8 @@
     if (details) showDetails(details.dataset.details);
   });
   window.addEventListener('storage', (event) => { if (event.key !== 'rotaleve.favorites') return; try { const saved = JSON.parse(event.newValue || '[]'); favorites = new Set(Array.isArray(saved) ? saved.filter((id) => typeof id === 'string') : []); render(); } catch { /* Ignore malformed browser-local data. */ } });
+  document.addEventListener('visibilitychange', () => { if (!document.hidden) loadOffers(); });
+  setInterval(() => { if (!document.hidden) render(); }, 60 * 1000);
+  setInterval(() => { if (!document.hidden) loadOffers(); }, 5 * 60 * 1000);
   loadOffers();
 })();
