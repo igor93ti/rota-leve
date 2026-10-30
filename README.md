@@ -1,98 +1,109 @@
 # Rota Leve
 
-Radar de passagens saindo de Fortaleza (FOR) e Recife (REC), com ofertas nacionais e internacionais em dinheiro e milhas. Interface pública, responsiva e sem autenticação, preparada para Azure Static Web Apps Free.
+[Abrir o site](https://green-ground-03cab511e.3.azurestaticapps.net) · [Repositório igor93ti/rota-leve](https://github.com/igor93ti/rota-leve) · [Execuções no GitHub Actions](https://github.com/igor93ti/rota-leve/actions)
 
-Repositório: [igor93ti/rota-leve](https://github.com/igor93ti/rota-leve).
+Radar público de passagens saindo de Fortaleza (FOR) e Recife (REC), em dinheiro e milhas, com destinos nacionais e internacionais. O site está publicado no **Azure Static Web Apps Free**, sem autenticação. A publicação inicial e o acesso público foram verificados com resposta HTTP 200; o histórico de Actions mostra o resultado de cada execução automática.
 
-O coletor inicial consulta dez páginas oficiais da Azul, GOL, TAP, Air France e KLM; o agente complementa com observações, incluindo LATAM. Milhas atualmente vêm do Azul Fidelidade. LATAM Pass, Smiles e outros programas dependem de pesquisas complementares ou novos conectores; não são anunciados como integrações já completas. Consulte [a rotina do agente](docs/AGENT.md) antes de atualizar dados.
+O catálogo inicial de 30/10/2026 reúne 246 anúncios de Azul, GOL, LATAM, TAP, Air France e KLM. A quantidade muda a cada coleta. As ofertas em milhas vêm atualmente do **Azul Fidelidade**. LATAM Pass, Smiles e outros programas dependem de pesquisa complementar ou de novos conectores; a cobertura não é universal. Cada oferta mostra a fonte e a data da observação.
 
-## Executar e validar
+## Executar e verificar
 
-Requer Node.js 22 ou superior. O site usa HTML, CSS e JavaScript, sem build de framework.
+Requer Node.js 22 ou superior. HTML, CSS e JavaScript são publicados diretamente, sem build de framework ou dependências de aplicação.
 
 ```powershell
 npm start
+```
+
+Abra o endereço informado pelo servidor. Para verificar o projeto e atualizar o catálogo:
+
+```powershell
 npm run check
 npm test
 npm run collect
 ```
 
-Abra o endereço exibido por `npm start`. `site/` contém todos os arquivos publicados; scripts, instruções do agente e credenciais ficam fora dessa pasta.
-
-## Dados e qualidade das ofertas
-
-O coletor publica um catálogo estático. Cada oportunidade deve manter sua fonte, o horário da consulta e o tipo de informação encontrada. Uma promoção anunciada por uma fonte editorial não confirma disponibilidade no momento da emissão. O preço final e as regras precisam ser consultados na companhia ou no programa de fidelidade.
-
-Não existe nesta versão uma integração universal que consulte todas as companhias e todos os programas. A cobertura é a das fontes habilitadas. Consultas em dinheiro e resgates em milhas têm inventários diferentes; milhas não são dinheiro, e as taxas devem ser apresentadas separadamente. Ofertas vencidas ou sem evidência suficiente não devem ser promovidas a tarifas confirmadas.
-
-O agente pode pesquisar novas oportunidades e registrar os resultados no formato esperado pelo coletor. A rotina deve preservar fontes e datas, evitar inferir uma tarifa de Fortaleza/Recife a partir de um preço genérico e manter falhas de consulta visíveis. A existência dos arquivos de agendamento não significa que a execução já esteja ativa: é necessário publicar o repositório, habilitar Actions e configurar o token do Azure.
-
-Oportunidades de reposicionamento comparam o custo total de sair de FOR/REC, chegar a outro aeroporto e usar uma promoção originada ali. A recomendação precisa incluir ida e volta do deslocamento quando aplicável, taxas, bagagem, hospedagem necessária e margem entre voos. Bilhetes separados podem exigir novo check-in e não oferecem uma conexão protegida; uma economia sem esses custos não deve ser anunciada como vantagem garantida.
-
-## Publicar no Azure Free
-
-O projeto precisa de uma assinatura Azure e um repositório GitHub. O plano escolhido pelo script é explicitamente `Free`; ele não cria banco de dados, máquina virtual, Functions independente ou serviço pago.
-
-### Conta e assinatura do Azure
-
-O plano gratuito da aplicação é diferente da avaliação gratuita da assinatura Azure. O cadastro de avaliação está disponível somente a novos clientes elegíveis e, no Brasil, exige telefone e cartão de crédito para verificação. A avaliação oferece crédito por 30 dias; depois é necessário migrar a assinatura para pagamento conforme o uso para manter os serviços, preservando o Static Web App no plano Free. Sem essa migração os serviços são desativados. A camada Free do site continua sem cobrança dentro das cotas, mas uma assinatura habilitada para cobrança permite contratar outros recursos pagos: não os crie para este projeto.
-
-Cadastro e condições oficiais: [conta Azure](https://azure.microsoft.com/pt-br/pricing/purchase-options/azure-account), [fim da avaliação](https://learn.microsoft.com/en-us/azure/cost-management-billing/manage/avoid-charges-free-account). Complete a verificação de cartão e o aceite dos termos diretamente no site Microsoft. O agente não precisa desses dados.
-
-### Opção 1: publicar diretamente pelo computador
-
-Instale o Azure CLI e Node.js. Confira a assinatura ativa antes de criar o recurso:
-
-```powershell
-az login
-az account show --query name -o tsv
-.\scripts\deploy-azure.ps1
-```
-
-O script cria/reutiliza o grupo `rg-rota-leve` e o Static Web App `rota-leve` em `westus2`, publica `site/` em produção e informa a URL. O nome deve ser único no contexto exigido pelo Azure; personalize se necessário:
-
-```powershell
-.\scripts\deploy-azure.ps1 -ResourceGroup rg-meu-radar -Name meu-radar -Location westus2
-```
-
-O deploy usa o SWA CLI via `npx`. O token passa somente por variável de ambiente e é removido/restaurado ao terminar. Não execute esse script com logs de depuração de credenciais ou transcrição de sessão. Com `-SkipDeploy`, apenas prepara o recurso e, se solicitado, o Secret do repositório.
-
-### Opção 2: publicação e atualização pelo GitHub
-
-1. Envie o projeto para um repositório com branch padrão `main` e habilite GitHub Actions.
-2. Crie um recurso **Static Web App → Free**, escolhendo origem de deploy **Other** no Azure. O workflow deste projeto já define a publicação; não é necessário gerar outro pelo portal.
-3. Em **Overview → Manage deployment token**, copie o token para o Secret de repositório **Settings → Secrets and variables → Actions → New repository secret**, com o nome `AZURE_STATIC_WEB_APPS_API_TOKEN`. Não coloque o token no código ou neste README.
-4. Execute o workflow **Publicar no Azure** manualmente uma vez. Depois, alterações em `site/` na `main` e coletas concluídas com sucesso atualizam o site.
-
-Também é possível preparar o recurso e cadastrar o Secret sem copiar o token. Requer GitHub CLI autenticado e permissão de administração de Secrets no repositório existente:
-
-```powershell
-gh auth login
-.\scripts\deploy-azure.ps1 -Repository dono/repositorio -SkipDeploy
-```
-
-O parâmetro aceita `dono/repositorio` ou a URL do GitHub e grava o Secret por stdin. Ele não cria um repositório novo.
+`npm run collect` acessa as fontes habilitadas; exige internet e altera `site/data/offers.json`. `npm run collect:offline` regenera o catálogo a partir das observações locais disponíveis. Consulte [a rotina do agente](docs/AGENT.md) antes de registrar novas oportunidades. Apenas `site/` é publicado; scripts e arquivos de operação ficam fora do site.
 
 ## Atualizações quatro vezes ao dia
 
-O workflow **Atualizar ofertas** roda em `00:17`, `06:17`, `12:17` e `18:17`, horário de `America/Sao_Paulo`. O minuto 17 evita o começo de cada hora, período de maior carga no agendador. Também pode ser iniciado manualmente pela aba Actions.
+Há duas rotinas complementares, preparadas para **00:17, 06:17, 12:17 e 18:17**, horário de Brasília (`America/Sao_Paulo`):
 
-A coleta valida e salva o catálogo no repositório. O workflow **Publicar no Azure** reage à conclusão bem-sucedida da coleta usando `workflow_run` e baixa a versão atual da `main`. Isso é necessário porque commits feitos com `GITHUB_TOKEN` normalmente não disparam outro workflow de `push`.
+- **GitHub Actions — Atualizar ofertas:** consulta páginas oficiais estruturadas, valida o catálogo e salva os dados na `main`. Executa na nuvem, independentemente do computador local, quando Actions e o agendamento estão habilitados.
+- **Agente no Codex:** amplia a pesquisa, busca oportunidades em outros programas e avalia combinações de rotas. A automação local depende do computador ligado, do aplicativo aberto e do acesso ao projeto e às ferramentas conectadas.
 
-O agendamento do GitHub é de melhor esforço: pode atrasar ou perder execuções, só usa a branch padrão e pode ser desativado em repositórios públicos após 60 dias sem atividade. A automação local do agente depende de o computador e o Codex estarem disponíveis; o coletor do GitHub continua independente depois de configurado. Pesquisas com APIs externas exigem suas próprias credenciais e podem ter limites ou custos, mesmo que a hospedagem seja gratuita.
+O workflow **Publicar no Azure** publica alterações em `site/` na `main` e reage à conclusão bem-sucedida de **Atualizar ofertas** por `workflow_run`. Esse segundo gatilho é necessário porque commits feitos com `GITHUB_TOKEN` normalmente não disparam outro workflow de `push`. A publicação valida os dados antes do envio. Também é possível iniciar os workflows manualmente pela aba Actions.
+
+O agendamento do GitHub é de melhor esforço: pode atrasar ou perder execuções, usa a branch padrão e pode ser desativado em repositórios públicos após 60 dias sem atividade. O minuto 17 evita o começo de cada hora, período de maior carga. A presença dos arquivos de workflow não comprova uma execução: confira o histórico de Actions e o horário exibido no site.
+
+## Dados e limites da pesquisa
+
+Uma página promocional informa um **preço anunciado**, sem confirmar disponibilidade no pagamento. O preço final, as taxas, a bagagem e as regras precisam ser conferidos na companhia ou no programa. A coleta preserva a fonte, o momento da leitura e falhas de consulta; não renova anúncios antigos para esconder indisponibilidade.
+
+Não existe nesta versão uma integração que consulte todas as companhias e programas. O coletor lê as páginas habilitadas em `config/sources.json`, e o agente complementa o catálogo em `sources/observations.json`. Valores genéricos sem origem e data de viagem identificadas não devem virar ofertas. Milhas de programas diferentes não representam o mesmo custo; taxas são registradas separadamente e `null` significa não informado.
+
+**Reposicionamento:** o motor está implementado, mas o catálogo inicial não recomenda combinações. Uma oportunidade só aparece quando há evidência dos bilhetes, horários com fuso, bagagem, taxas e custos de transporte/pernoite, com margem entre voos e economia suficiente. Para ida e volta, o cálculo inclui o retorno ao aeroporto de origem. Bilhetes separados podem exigir novo check-in e não oferecem uma conexão protegida. Sem esses dados, não se anuncia uma economia presumida.
+
+## Publicação no Azure Free
+
+O recurso atual é um Static Web App no plano `Free`. Os scripts conferem esse plano e recusam reutilizar um recurso em outra camada. Não criam banco de dados, máquina virtual, Functions independente ou serviço de IA pago.
+
+### Publicar pelo computador
+
+Requer Azure CLI autenticado e Node.js. O caminho REST aceita assinatura e diretório explicitamente, inclusive quando uma assinatura nova ainda não aparece na lista local do CLI:
+
+```powershell
+$subscriptionId = Read-Host 'ID da assinatura Azure'
+$tenantId = Read-Host 'ID do diretório Azure'
+az login --tenant $tenantId --allow-no-subscriptions
+.\scripts\deploy-azure-rest.ps1 -SubscriptionId $subscriptionId -TenantId $tenantId
+```
+
+O script cria ou reutiliza `rg-rota-leve` e `rota-leve` em `westus2`, confere o plano Free e publica `site/` pelo SWA CLI via `npx`. Aceita `-ResourceGroup`, `-Name` e `-Location` para outro destino. `-SkipDeploy` apenas prepara e verifica o recurso, sem solicitar o token de publicação.
+
+O token de publicação fica no processo durante o deploy e a variável de ambiente é restaurada ao terminar. Não use transcrição ou logs de depuração de credenciais ao executar scripts de implantação.
+
+### Publicação automática com OIDC
+
+O fluxo principal do GitHub usa **OIDC**, sem armazenar um Secret de token do Azure no repositório. Uma identidade gerenciada permite autenticar a `main` deste repositório; o papel de acesso autoriza somente `Microsoft.Web/staticSites/read` e `Microsoft.Web/staticSites/listsecrets/action`, atribuídos ao Static Web App específico. O workflow obtém o token de publicação durante a execução, mascara o valor nos logs e o entrega à ação de deploy.
+
+Para configurar esse vínculo em um ambiente novo, publique primeiro o site Free pelo comando anterior. Use uma conta Azure com permissão para criar a identidade gerenciada e definir/atribuir o papel de acesso. Obtenha os IDs numéricos imutáveis do proprietário e do repositório nos metadados do GitHub; não substitua esses IDs por nomes nem os adivinhe:
+
+```powershell
+$repository = 'igor93ti/rota-leve'
+$repositoryInfo = Invoke-RestMethod -Uri "https://api.github.com/repos/$repository"
+.\scripts\configure-azure-oidc.ps1 `
+  -SubscriptionId $subscriptionId `
+  -TenantId $tenantId `
+  -Repository $repository `
+  -OwnerId ([string]$repositoryInfo.owner.id) `
+  -RepositoryId ([string]$repositoryInfo.id)
+```
+
+O script restringe a confiança à branch `main`, ao emissor OIDC do GitHub e à audiência Azure indicada. Ele configura somente o lado Azure e grava `config/azure-deployment.json`, com identificadores não secretos para o workflow. Envie esse arquivo com `.github/workflows/deploy.yml` para a `main`, habilite Actions e acompanhe a primeira execução de **Publicar no Azure**. Não é necessário instalar GitHub CLI nem criar um Secret `AZURE_STATIC_WEB_APPS_API_TOKEN` para esse fluxo. A conexão do plugin GitHub usada pelo agente é independente da identidade de publicação do Azure.
+
+### Arquivos de implantação
+
+- `deployment.json`: URL pública, nomes do recurso/grupo, região e plano `Free`; pode ser versionado.
+- `config/azure-deployment.json`: IDs não secretos da identidade, do destino e da confiança OIDC; consumido pelo workflow.
+- `.azure/target.json`: metadados locais da assinatura e do destino usados na operação; a pasta `.azure/` é ignorada pelo Git. Não contém token de publicação e não precisa ser enviada ao repositório.
+
+`scripts/deploy-azure.ps1` mantém o caminho anterior baseado no contexto ativo do CLI. Sua opção de cadastrar um Secret é compatibilidade manual e não é necessária nem usada pelo fluxo OIDC atual.
 
 ## Limites gratuitos
 
-Conforme a documentação oficial consultada em 30/10/2026, Azure Static Web Apps Free oferece 100 GB de tráfego mensal por assinatura, 250 MB por ambiente, 500 MB somando ambientes, SSL e dois domínios personalizados. Não possui SLA; ao exceder o tráfego, o serviço pode deixar de servir o site. Um domínio próprio, se desejado, precisa ser adquirido separadamente.
+Conforme a documentação oficial consultada em 30/10/2026, Azure Static Web Apps Free oferece 100 GB de tráfego mensal por assinatura, 250 MB por ambiente, 500 MB somando ambientes, SSL e dois domínios personalizados. Não possui SLA; ao exceder o tráfego, o serviço pode deixar de servir o site. Um domínio próprio precisa ser adquirido separadamente, se desejado. A identidade gerenciada usada pelo OIDC não acrescenta cobrança.
 
-Runners padrão de GitHub Actions em repositórios públicos são gratuitos. Para repositórios privados, o plano GitHub Free inclui atualmente US$ 12/mês de compute compartilhado e 500 MB de artefatos; consumo adicional pode ser cobrado conforme a configuração da conta. Este projeto usa jobs curtos em Linux e dispensa o armazenamento de grandes artefatos, mas a franquia também pode ser consumida por outros projetos.
+Runners padrão de GitHub Actions em repositórios públicos são gratuitos. Em repositórios privados, a franquia depende do plano e compartilha consumo com outros projetos. APIs externas podem ter limites ou custos próprios; a hospedagem gratuita não inclui crédito de APIs ou de IA.
+
+A avaliação gratuita de uma assinatura Azure é diferente da camada Free deste site. Depois da avaliação, a assinatura precisa continuar ativa para manter os serviços. O Static Web App pode permanecer no plano Free; outros recursos criados na assinatura podem gerar cobranças.
 
 ## Documentação oficial
 
 - [Preços e limites do Azure Static Web Apps](https://azure.microsoft.com/en-us/pricing/details/app-service/static/)
-- [Criar Static Web App pelo portal](https://learn.microsoft.com/en-us/azure/static-web-apps/get-started-portal)
-- [Configuração de build e publicação](https://learn.microsoft.com/en-us/azure/static-web-apps/build-configuration)
-- [Deploy com o SWA CLI e token por variável de ambiente](https://learn.microsoft.com/en-us/azure/static-web-apps/static-web-apps-cli)
-- [Azure CLI: criar Static Web App no plano Free](https://learn.microsoft.com/en-us/cli/azure/staticwebapp?view=azure-cli-latest)
+- [Identidades gerenciadas do Azure](https://learn.microsoft.com/en-us/entra/identity/managed-identities-azure-resources/overview)
+- [GitHub Actions e autenticação OIDC no Azure](https://learn.microsoft.com/en-us/azure/developer/github/connect-from-azure-openid-connect)
+- [GitHub OIDC e identificadores imutáveis](https://docs.github.com/en/actions/reference/security/oidc)
+- [Publicação com o SWA CLI](https://learn.microsoft.com/en-us/azure/static-web-apps/static-web-apps-cli)
 - [GitHub Actions: eventos e limites do agendamento](https://docs.github.com/en/actions/reference/workflows-and-actions/events-that-trigger-workflows)
 - [GitHub Actions: cobrança e franquias](https://docs.github.com/en/billing/concepts/product-billing/github-actions)
+- [Fim da avaliação gratuita do Azure](https://learn.microsoft.com/en-us/azure/cost-management-billing/manage/avoid-charges-free-account)
