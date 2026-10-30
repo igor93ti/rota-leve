@@ -2,6 +2,10 @@
 
 Radar de passagens saindo de Fortaleza (FOR) e Recife (REC), com ofertas nacionais e internacionais em dinheiro e milhas. Interface pública, responsiva e sem autenticação, preparada para Azure Static Web Apps Free.
 
+Repositório: [igor93ti/rota-leve](https://github.com/igor93ti/rota-leve).
+
+O coletor inicial consulta dez páginas oficiais da Azul, GOL, TAP, Air France e KLM; o agente complementa com observações, incluindo LATAM. Milhas atualmente vêm do Azul Fidelidade. LATAM Pass, Smiles e outros programas dependem de pesquisas complementares ou novos conectores; não são anunciados como integrações já completas. Consulte [a rotina do agente](docs/AGENT.md) antes de atualizar dados.
+
 ## Executar e validar
 
 Requer Node.js 22 ou superior. O site usa HTML, CSS e JavaScript, sem build de framework.
@@ -28,6 +32,12 @@ Oportunidades de reposicionamento comparam o custo total de sair de FOR/REC, che
 ## Publicar no Azure Free
 
 O projeto precisa de uma assinatura Azure e um repositório GitHub. O plano escolhido pelo script é explicitamente `Free`; ele não cria banco de dados, máquina virtual, Functions independente ou serviço pago.
+
+### Conta e assinatura do Azure
+
+O plano gratuito da aplicação é diferente da avaliação gratuita da assinatura Azure. O cadastro de avaliação está disponível somente a novos clientes elegíveis e, no Brasil, exige telefone e cartão de crédito para verificação. A avaliação oferece crédito por 30 dias; depois é necessário migrar a assinatura para pagamento conforme o uso para manter os serviços, preservando o Static Web App no plano Free. Sem essa migração os serviços são desativados. A camada Free do site continua sem cobrança dentro das cotas, mas uma assinatura habilitada para cobrança permite contratar outros recursos pagos: não os crie para este projeto.
+
+Cadastro e condições oficiais: [conta Azure](https://azure.microsoft.com/pt-br/pricing/purchase-options/azure-account), [fim da avaliação](https://learn.microsoft.com/en-us/azure/cost-management-billing/manage/avoid-charges-free-account). Complete a verificação de cartão e o aceite dos termos diretamente no site Microsoft. O agente não precisa desses dados.
 
 ### Opção 1: publicar diretamente pelo computador
 

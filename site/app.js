@@ -31,7 +31,7 @@
   let favorites = new Set();
   try { const saved = JSON.parse(localStorage.getItem('rotaleve.favorites') || '[]'); if (Array.isArray(saved)) favorites = new Set(saved.filter((id) => typeof id === 'string')); } catch { /* Browser storage is optional. */ }
   let data = { offers: [], coverage: { summary: '', sources: [] } };
-  let state = { origin: 'FOR', payment: 'all', region: 'all', search: '', sort: 'recommended', budget: 100, direct: false, reposition: false, favorites: false };
+  let state = { origin: 'FOR', payment: 'all', region: 'all', search: '', sort: 'price', budget: 100, direct: false, reposition: false, favorites: false };
   let loadError = false;
   let toastTimer;
 
@@ -103,7 +103,9 @@
     $('#metricOffers').innerHTML = `${offers.length} <small>achados</small>`;
     $('#allTabCount').textContent = offers.length;
     $('#metricCash').textContent = cash.length ? money(Math.min(...cash.map((offer) => Number(offer.price)))) : '—';
-    $('#metricMiles').innerHTML = miles.length ? `${integer(Math.min(...miles.map((offer) => Number(offer.price))))} <small>pts</small>` : '—';
+    const programs = new Set(miles.map((offer) => offer.program));
+    $('#metricMiles').innerHTML = programs.size > 1 ? `${programs.size} <small>programas</small>` : miles.length ? `${integer(Math.min(...miles.map((offer) => Number(offer.price))))} <small>pts</small>` : '—';
+    $('#metricMiles').title = programs.size === 1 ? [...programs][0] : 'Compare os valores dentro de cada programa de fidelidade.';
     const sources = new Set(offers.map((offer) => offer.sourceName).filter(Boolean));
     $('#metricSources').innerHTML = `${sources.size} <small>${sources.size === 1 ? 'fonte' : 'fontes'}</small>`;
     const schedule = data.run?.schedule;
@@ -128,7 +130,14 @@
       && (!state.reposition || Boolean(offer.reposition))
       && (state.payment === 'all' || state.budget === 100 || Number(offer.price) <= budgetValue()));
     return offers.sort((a, b) => {
-      if (state.sort === 'price') return (a.type === b.type ? Number(a.price) - Number(b.price) : a.type === 'cash' ? -1 : 1);
+      if (state.sort === 'price') {
+        if (a.type !== b.type) return a.type === 'cash' ? -1 : 1;
+        if (a.type === 'miles') {
+          const programOrder = String(a.program || '').localeCompare(String(b.program || ''), 'pt-BR');
+          if (programOrder) return programOrder;
+        }
+        return Number(a.price) - Number(b.price);
+      }
       if (state.sort === 'departure') return (a.departureDate || '9999').localeCompare(b.departureDate || '9999');
       if (state.sort === 'savings') return Number(b.reposition?.savings || 0) - Number(a.reposition?.savings || 0) || Number(Boolean(b.reposition)) - Number(Boolean(a.reposition));
       return new Date(b.observedAt || 0).valueOf() - new Date(a.observedAt || 0).valueOf() || Number(a.price) - Number(b.price);
@@ -182,13 +191,15 @@
   }
 
   function resetFilters() {
-    state = { ...state, payment: 'all', region: 'all', search: '', sort: 'recommended', budget: 100, direct: false, reposition: false };
+    state = { ...state, payment: 'all', region: 'all', search: '', sort: 'price', budget: 100, direct: false, reposition: false };
     render();
   }
 
   function openDialog(content, eyebrow = 'ROTA LEVE') {
     $('#dialogEyebrow').textContent = eyebrow;
     $('#dialogContent').innerHTML = content;
+    const title = $('#dialogContent h2');
+    if (title) title.id = 'dialogTitle';
     if (!$('#detailsDialog').open) $('#detailsDialog').showModal();
   }
 
