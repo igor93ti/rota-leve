@@ -39,6 +39,13 @@ if ($Repository) {
 }
 
 $account = Invoke-AzureJson -Arguments @('account', 'show')
+# az login --allow-no-subscriptions pode selecionar um diretorio sem assinatura.
+# Nesse caso, id e tenantId coincidem: autenticar nao habilita criar recursos.
+if ([string]::IsNullOrWhiteSpace([string]$account.id) -or
+    $account.id -eq $account.tenantId -or
+    $account.name -match 'tenant level account') {
+    throw 'Login Azure aceito, mas nenhuma assinatura real esta selecionada. Conclua a ativacao de uma assinatura no portal Azure; depois execute az login, az account list --refresh e az account set --subscription <ID_DA_ASSINATURA>. Nenhum recurso foi criado.'
+}
 Write-Host "Assinatura selecionada: $($account.name)"
 
 $groupExists = Invoke-AzureJson -Arguments @('group', 'exists', '--name', $ResourceGroup)
