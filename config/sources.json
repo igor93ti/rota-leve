@@ -1,0 +1,18 @@
+{
+  "sources": [
+    {"id":"azul-for","name":"Azul · Fortaleza","airline":"Azul","program":"Azul Fidelidade","url":"https://passagens.voeazul.com.br/pt/voos-de-fortaleza","kind":"airline-page","official":true,"allowed":true,"automatic":true,"enabled":true},
+    {"id":"azul-rec","name":"Azul · Recife","airline":"Azul","program":"Azul Fidelidade","url":"https://passagens.voeazul.com.br/pt/voos-de-recife","kind":"airline-page","official":true,"allowed":true,"automatic":true,"enabled":true},
+    {"id":"azul-gru","name":"Azul · Guarulhos","airline":"Azul","program":"Azul Fidelidade","url":"https://passagens.voeazul.com.br/pt/voos-de-sao-paulo","kind":"airline-page","official":true,"allowed":true,"automatic":true,"enabled":true},
+    {"id":"azul-vcp","name":"Azul · Campinas","airline":"Azul","program":"Azul Fidelidade","url":"https://passagens.voeazul.com.br/pt/voos-de-campinas","kind":"airline-page","official":true,"allowed":true,"automatic":true,"enabled":true},
+    {"id":"gol-rec-argentina","name":"GOL · Recife / Argentina","airline":"GOL","url":"https://www.voegol.com.br/br/voos-de-recife-para-argentina","kind":"airline-page","official":true,"allowed":true,"automatic":true,"enabled":true},
+    {"id":"tap-for-lis","name":"TAP · Fortaleza / Lisboa","airline":"TAP","url":"https://www.flytap.com/pt_br/passagens-de-fortaleza-para-lisboa","kind":"airline-page","official":true,"allowed":true,"automatic":true,"enabled":true},
+    {"id":"gol-for","name":"GOL · Fortaleza","airline":"GOL","url":"https://www.voegol.com.br/br/voos-de-fortaleza","kind":"airline-page","official":true,"allowed":true,"automatic":true,"enabled":false},
+    {"id":"gol-for-argentina","name":"GOL · Fortaleza / Argentina","airline":"GOL","url":"https://www.voegol.com.br/br/voos-de-fortaleza-para-argentina","kind":"airline-page","official":true,"allowed":true,"automatic":true,"enabled":false},
+    {"id":"gol-rec","name":"GOL · Recife","airline":"GOL","url":"https://www.voegol.com.br/br/voos-de-recife","kind":"airline-page","official":true,"allowed":true,"automatic":true,"enabled":false},
+    {"id":"tap-rec-lis","name":"TAP · Recife / Lisboa","airline":"TAP","url":"https://www.flytap.com/pt_br/passagens-de-recife-para-lisboa","kind":"airline-page","official":true,"allowed":true,"automatic":true,"enabled":false},
+    {"id":"azul-gig","name":"Azul · Rio de Janeiro","airline":"Azul","program":"Azul Fidelidade","url":"https://passagens.voeazul.com.br/pt/voos-do-rio-de-janeiro","kind":"airline-page","official":true,"allowed":true,"automatic":true,"enabled":false},
+    {"id":"azul-bsb","name":"Azul · Brasília","airline":"Azul","program":"Azul Fidelidade","url":"https://passagens.voeazul.com.br/pt/voos-de-brasilia","kind":"airline-page","official":true,"allowed":true,"automatic":true,"enabled":false},
+    {"id":"md-rss","name":"Melhores Destinos","url":"https://www.melhoresdestinos.com.br/feed","kind":"discovery-feed","official":false,"allowed":true,"automatic":false,"enabled":true,"notes":"Descoberta editorial para o agente. Ler artigo e conferir origem, datas e tarifa antes de registrar uma oferta."},
+    {"id":"pp-rss","name":"Passageiro de Primeira","url":"https://passageirodeprimeira.com/feed/","kind":"discovery-feed","official":false,"allowed":true,"automatic":false,"enabled":true,"notes":"Descoberta editorial para o agente; não interpretar título de artigo como tarifa disponível."}
+  ]
+}

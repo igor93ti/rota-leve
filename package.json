@@ -1,0 +1,14 @@
+{
+  "name": "rota-leve",
+  "version": "1.0.0",
+  "private": true,
+  "type": "module",
+  "engines": { "node": ">=22" },
+  "scripts": {
+    "start": "node scripts/serve.mjs",
+    "collect": "node scripts/collect.mjs",
+    "collect:offline": "node scripts/collect.mjs --offline",
+    "check": "node scripts/check.mjs",
+    "test": "node --test tests/*.test.mjs"
+  }
+}

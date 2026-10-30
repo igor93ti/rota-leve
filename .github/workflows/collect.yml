@@ -1,0 +1,37 @@
+name: Atualizar ofertas
+
+on:
+  schedule:
+    # UTC: equivale a 00:17, 06:17, 12:17 e 18:17 em São Paulo.
+    - cron: '17 3,9,15,21 * * *'
+  workflow_dispatch:
+
+permissions:
+  contents: write
+
+concurrency:
+  group: update-offers
+  cancel-in-progress: false
+
+jobs:
+  collect:
+    runs-on: ubuntu-latest
+    timeout-minutes: 10
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version: '22'
+      - name: Coletar preços anunciados
+        run: npm run collect
+      - name: Validar dados e comparações
+        run: npm run check && npm test
+      - name: Salvar catálogo atualizado
+        run: |
+          git config user.name "rota-leve[bot]"
+          git config user.email "rota-leve[bot]@users.noreply.github.com"
+          git add site/data/offers.json
+          if ! git diff --cached --quiet; then
+            git commit -m "data: atualizar preços anunciados"
+            git push
+          fi

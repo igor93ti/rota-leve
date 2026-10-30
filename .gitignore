@@ -1,0 +1,11 @@
+node_modules/
+.env
+.env.*
+!.env.example
+.azure/
+.swa/
+swa-cli.config.json
+*.log
+artifacts/
+tmp/
+.DS_Store
