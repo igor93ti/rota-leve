@@ -7,11 +7,11 @@
   const photographs = {
     LIS: 'photo-1555881400-74d7acaacd8b', OPO: 'photo-1555881400-74d7acaacd8b',
     CDG: 'photo-1502602898657-3e91760cbb34', ORY: 'photo-1502602898657-3e91760cbb34',
-    GIG: 'photo-1483729558449-99ef09a8c325', SDU: 'photo-1483729558449-99ef09a8c325',
+    GIG: 'photo-1483729558449-99ef09a8c325', SDU: 'photo-1483729558449-99ef09a8c325', RIO: 'photo-1483729558449-99ef09a8c325',
     REC: 'photo-1507525428034-b723cf961d3e', FOR: 'photo-1507525428034-b723cf961d3e',
-    FEN: 'photo-1519046904884-53103b34b206', SSA: 'photo-1519046904884-53103b34b206',
-    default: 'photo-1476514525535-07fb3b4ae5f1'
+    FEN: 'photo-1519046904884-53103b34b206', SSA: 'photo-1519046904884-53103b34b206'
   };
+  const previewFares = 3;
   const escape = (value) => String(value ?? '').replace(/[&<>"']/g, (character) => ({ '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;', "'": '&#39;' }[character]));
   const normalize = (value) => String(value ?? '').normalize('NFD').replace(/[\u0300-\u036f]/g, '').toLowerCase();
   const money = (value) => Number.isFinite(Number(value)) ? new Intl.NumberFormat('pt-BR', { style: 'currency', currency: 'BRL', maximumFractionDigits: 2 }).format(Number(value)) : 'Não informado';
@@ -22,6 +22,20 @@
     const parsed = new Date(/^\d{4}-\d{2}-\d{2}$/.test(value) ? `${value}T12:00:00` : value);
     return Number.isNaN(parsed.valueOf()) ? 'Datas na fonte' : new Intl.DateTimeFormat('pt-BR', { day: '2-digit', month: 'short', ...(withYear ? { year: 'numeric' } : {}) , timeZone: 'America/Sao_Paulo' }).format(parsed).replace(/\./g, '');
   };
+  const monthYear = (value, withYear = true) => new Intl.DateTimeFormat('pt-BR', { month: 'short', ...(withYear ? { year: 'numeric' } : {}), timeZone: 'America/Sao_Paulo' }).format(new Date(`${value}T12:00:00`)).replace(/\./g, '').replace(' de ', ' ');
+  const dateRange = (first, last) => {
+    if (!/^\d{4}-\d{2}-\d{2}$/.test(first || '') || !/^\d{4}-\d{2}-\d{2}$/.test(last || '')) return 'Datas na fonte';
+    if (first.slice(0, 7) === last.slice(0, 7)) return monthYear(first);
+    return first.slice(0, 4) === last.slice(0, 4) ? `${monthYear(first, false)} – ${monthYear(last)}` : `${monthYear(first)} – ${monthYear(last)}`;
+  };
+  const dayTile = (value) => {
+    const parsed = new Date(/^\d{4}-\d{2}-\d{2}$/.test(value || '') ? `${value}T12:00:00` : NaN);
+    if (Number.isNaN(parsed.valueOf())) return { day: '—', month: '', weekday: '' };
+    const part = (options) => new Intl.DateTimeFormat('pt-BR', { ...options, timeZone: 'America/Sao_Paulo' }).format(parsed).replace(/\./g, '');
+    return { day: part({ day: '2-digit' }), month: part({ month: 'short' }), weekday: part({ weekday: 'short' }) };
+  };
+  // Destinos sem foto própria recebem um degradê estável em vez de repetir a mesma imagem genérica.
+  const tone = (value) => [...String(value)].reduce((sum, character) => sum + character.charCodeAt(0), 0) % 6;
   const timestamp = (value) => {
     const parsed = new Date(value);
     return Number.isNaN(parsed.valueOf()) ? 'Horário não informado' : new Intl.DateTimeFormat('pt-BR', { day: '2-digit', month: '2-digit', hour: '2-digit', minute: '2-digit', timeZone: 'America/Sao_Paulo' }).format(parsed);
@@ -32,6 +46,7 @@
   try { const saved = JSON.parse(localStorage.getItem('rotaleve.favorites') || '[]'); if (Array.isArray(saved)) favorites = new Set(saved.filter((id) => typeof id === 'string')); } catch { /* Browser storage is optional. */ }
   let data = { offers: [], coverage: { summary: '', sources: [] } };
   let state = { origin: 'FOR', payment: 'all', region: 'all', search: '', sort: 'price', budget: 100, direct: false, reposition: false, favorites: false };
+  let expanded = new Set();
   let loadError = false;
   let toastTimer;
 
@@ -144,30 +159,63 @@
     });
   }
 
-  function card(offer, index) {
+  // Agrupa por cidade, não por aeroporto: CGH, GRU e SAO aparecem juntos em São Paulo.
+  // A ordem dos grupos segue a melhor oferta de cada um na ordenação escolhida.
+  function groupOffers(offers) {
+    const groups = new Map();
+    for (const offer of offers) {
+      const city = offer.destinationCity || cityNames[offer.destination] || offer.destination;
+      const country = offer.destinationCountry || (offer.region === 'domestic' ? 'Brasil' : 'Internacional');
+      const key = normalize(`${city} ${country}`).replace(/[^a-z0-9]+/g, '-').replace(/^-|-$/g, '') || offer.destination.toLowerCase();
+      if (!groups.has(key)) groups.set(key, { key, city, country, offers: [] });
+      groups.get(key).offers.push(offer);
+    }
+    return [...groups.values()].map((group) => ({ ...group, airports: [...new Set(group.offers.map((offer) => offer.destination))].sort() }));
+  }
+
+  function fareRow(offer, group, best) {
     const miles = offer.type === 'miles';
     const saved = favorites.has(offer.id);
-    const destination = offer.destinationCity || cityNames[offer.destination] || offer.destination;
-    const image = photographs[offer.destination] || photographs.default;
-    const url = safeUrl(offer.sourceUrl);
-    const stops = offer.reposition ? `via ${offer.reposition.via}` : offer.stops === 0 ? 'Voo direto' : Number.isInteger(offer.stops) ? `${offer.stops} ${offer.stops === 1 ? 'conexão' : 'conexões'}` : 'Ver itinerário';
-    const taxes = offer.taxes === null || offer.taxes === undefined ? 'Taxas: confira na fonte' : offer.taxes === 0 ? miles ? 'Taxas informadas: R$ 0,00' : 'Taxas incluídas' : `+ ${money(offer.taxes)} em taxas`;
-    const priceHtml = miles ? `${integer(offer.price)}<span class="price-unit">${escape(offer.unit || 'pts')}</span>` : `<span class="currency">R$</span>${escape(new Intl.NumberFormat('pt-BR', { minimumFractionDigits: 2, maximumFractionDigits: 2 }).format(offer.price))}`;
-    const trip = offer.tripType === 'roundtrip' ? 'Ida e volta' : 'Só ida';
-    const tripDates = `${date(offer.departureDate)}${offer.returnDate ? ` → ${date(offer.returnDate)}` : ''}`;
-    const savings = offer.reposition?.savings > 0 ? `<div class="saving-note">↗ Economia estimada de ${escape(money(offer.reposition.savings))} com saída por ${escape(offer.reposition.via)}</div>` : '';
-    return `<article class="offer-card" aria-label="${escape(destination)}, ${miles ? 'milhas' : 'dinheiro'}"><div class="card-cover"><div class="cover-fallback" aria-hidden="true">${escape(offer.destination)}</div><img src="https://images.unsplash.com/${image}?auto=format&fit=crop&w=800&q=80" alt="" ${index < 3 ? 'fetchpriority="low"' : 'loading="lazy"'} decoding="async" referrerpolicy="no-referrer"><div class="cover-badges"><span class="offer-badge ${miles ? 'miles' : ''}">${miles ? '✧ Milhas' : 'R$ Dinheiro'}</span>${offer.reposition ? '<span class="offer-badge reposition">Nova rota</span>' : ''}</div><span class="image-caption">Imagem ilustrativa</span><button class="favorite-button ${saved ? 'saved' : ''}" data-favorite="${escape(offer.id)}" aria-label="${saved ? 'Remover' : 'Salvar'} ${escape(destination)} ${saved ? 'das favoritas' : 'nas favoritas'}" aria-pressed="${saved}">${starIcon}</button></div><div class="card-body"><div class="destination-title"><h3>${escape(destination)}</h3><span>${escape(offer.destinationCountry || (offer.region === 'domestic' ? 'Brasil' : 'Internacional'))}</span></div><div class="card-route"><span>${escape(offer.origin)}</span><span class="route-arrow">⟶</span><span>${escape(offer.destination)}</span><span class="stops">${escape(stops)}</span></div><div class="trip-dates">${calendarIcon}<span>${escape(tripDates)}</span><span>${trip}</span></div><div class="card-price-row"><div><div class="price-label">Preço anunciado por pessoa</div><div class="price">${priceHtml}</div><div class="price-tax">${escape(taxes)}</div></div><span class="airline-pill"><span class="airline-mark"></span>${escape(miles ? (offer.program || offer.airline) : offer.airline)}</span></div>${savings}<div class="card-source"><span>${escape(offer.sourceName || 'Fonte da oferta')}</span><span>${offer.availability === 'verified' ? 'Consultado' : 'Anunciado'} ${escape(date(offer.observedAt))}</span></div><div class="card-actions">${url ? `<a class="source-link" href="${escape(url)}" target="_blank" rel="noopener noreferrer">Ver na fonte <span>↗</span></a>` : '<span class="source-link">Fonte indisponível</span>'}<button class="details-button" data-details="${escape(offer.id)}">Detalhes</button></div></div></article>`;
+    const tile = dayTile(offer.departureDate);
+    const when = offer.tripType === 'roundtrip' ? offer.returnDate ? `Volta ${date(offer.returnDate)}` : 'Ida e volta' : `${tile.weekday ? `${tile.weekday} · ` : ''}Só ida`;
+    const meta = [miles ? offer.program || offer.airline : offer.airline, group.airports.length > 1 ? offer.destination : null, offer.reposition ? `via ${offer.reposition.via}` : null, offer.stops === 0 && !offer.reposition ? 'Direto' : null, offer.reposition?.savings > 0 ? `economia de ${money(offer.reposition.savings)}` : null].filter(Boolean).join(' · ');
+    const price = miles ? `${integer(offer.price)}<small>${escape(offer.unit || 'pts')}</small>` : escape(money(offer.price));
+    const taxes = !miles ? '' : offer.taxes === 0 ? 'Taxas R$ 0,00' : Number.isFinite(offer.taxes) ? `+ ${money(offer.taxes)}` : '+ taxas';
+    return `<li class="fare-row${miles ? ' miles' : ''}"><button class="fare-main" data-details="${escape(offer.id)}"><span class="sr-only">Ver detalhes: </span><span class="fare-date"><strong>${escape(tile.day)}</strong><small>${escape(tile.month)}</small></span><span class="fare-info"><span class="fare-when">${escape(when)}</span><span class="fare-meta">${best ? '<span class="best-tag">Menor preço</span>' : ''}<span>${escape(meta)}</span></span></span><span class="fare-price"><strong>${price}</strong>${taxes ? `<small>${escape(taxes)}</small>` : ''}</span></button><button class="favorite-button fare-favorite ${saved ? 'saved' : ''}" data-favorite="${escape(offer.id)}" aria-label="${saved ? 'Remover' : 'Salvar'} ${escape(group.city)} em ${escape(date(offer.departureDate))} ${saved ? 'das favoritas' : 'nas favoritas'}" aria-pressed="${saved}">${starIcon}</button></li>`;
+  }
+
+  function groupCard(group, index) {
+    const { offers, airports } = group;
+    const cheapest = (list) => list.reduce((best, offer) => !best || Number(offer.price) < Number(best.price) ? offer : best, null);
+    const cash = offers.filter((offer) => offer.type === 'cash');
+    // Milhas de programas diferentes não são comparáveis: cada programa tem o seu "a partir de".
+    const programs = [...new Set(offers.filter((offer) => offer.type === 'miles').map((offer) => offer.program))].map((program) => offers.filter((offer) => offer.type === 'miles' && offer.program === program));
+    const highlights = [cash, ...programs].filter((list) => list.length > 1).map((list) => cheapest(list).id);
+    const bestCash = cheapest(cash);
+    const fromPrices = `${bestCash ? `<div class="from-price"><div class="price-label">Dinheiro</div><div class="price"><span class="currency">R$</span>${escape(new Intl.NumberFormat('pt-BR', { minimumFractionDigits: 2, maximumFractionDigits: 2 }).format(bestCash.price))}</div></div>` : ''}${programs.map((list) => { const best = cheapest(list); return `<div class="from-price miles"><div class="price-label" title="${escape(best.program)}">${escape(best.program)}</div><div class="price">${integer(best.price)}<span class="price-unit">${escape(best.unit || 'pts')}</span></div></div>`; }).join('')}`;
+    const departures = offers.map((offer) => offer.departureDate).filter(Boolean).sort();
+    const airlines = [...new Set(offers.map((offer) => offer.airline))].join(' · ');
+    const sources = [...new Set(offers.map((offer) => offer.sourceName).filter(Boolean))].join(', ');
+    const latest = offers.map((offer) => offer.observedAt).filter(Boolean).sort().at(-1);
+    const open = expanded.has(group.key);
+    const visible = open ? offers : offers.slice(0, previewFares);
+    const photoCode = airports.find((code) => photographs[code]);
+    const cover = photoCode ? `<img src="https://images.unsplash.com/${photographs[photoCode]}?auto=format&fit=crop&w=800&q=80" alt="" ${index < 3 ? 'fetchpriority="low"' : 'loading="lazy"'} decoding="async" referrerpolicy="no-referrer"><span class="image-caption">Imagem ilustrativa</span>` : '';
+    const badges = `${cash.length ? '<span class="offer-badge">R$ Dinheiro</span>' : ''}${programs.length ? '<span class="offer-badge miles">✧ Milhas</span>' : ''}${offers.some((offer) => offer.reposition) ? '<span class="offer-badge reposition">Nova rota</span>' : ''}`;
+    const toggle = offers.length > previewFares ? `<button class="group-toggle" data-group-toggle="${escape(group.key)}" aria-expanded="${open}" aria-controls="fares-${escape(group.key)}">${open ? 'Mostrar menos' : `Ver todas as ${offers.length} opções`}<span aria-hidden="true">${open ? '↑' : '↓'}</span></button>` : '';
+    return `<article class="offer-card destination-card" aria-labelledby="dest-${escape(group.key)}"><div class="card-cover"><div class="cover-fallback${airports.length > 1 ? ' multi' : ''}" data-tone="${tone(group.key)}" aria-hidden="true">${escape(airports.join(' '))}</div>${cover}<div class="cover-badges">${badges}</div></div><div class="card-body"><div class="destination-title"><h3 id="dest-${escape(group.key)}">${escape(group.city)}</h3><span>${escape(group.country)}</span></div><div class="card-route"><span>${escape(state.origin)}</span><span class="route-arrow">⟶</span><span>${escape(airports.join(' · '))}</span><span class="stops">${escape(airlines)}</span></div><div class="from-label">A partir de</div><div class="from-prices">${fromPrices}</div><div class="trip-dates">${calendarIcon}<span>${escape(dateRange(departures[0], departures.at(-1)))}</span><span>${offers.length} ${offers.length === 1 ? 'opção' : 'opções'}</span></div><ol class="fare-list" id="fares-${escape(group.key)}" aria-label="Datas e preços para ${escape(group.city)}">${visible.map((offer) => fareRow(offer, group, highlights.includes(offer.id))).join('')}</ol>${toggle}<div class="card-source"><span title="${escape(sources)}">${escape(sources || 'Fonte da oferta')}</span><span>Anunciado ${escape(date(latest))}</span></div></div></article>`;
   }
 
   function render() {
     refreshControls();
     renderMetrics();
     const offers = filteredOffers();
+    const groups = groupOffers(offers);
     $('#offersGrid').setAttribute('aria-busy', 'false');
-    $('#offersGrid').innerHTML = offers.map(card).join('');
+    $('#offersGrid').innerHTML = groups.map(groupCard).join('');
     $('#offersGrid').hidden = !offers.length;
     $('#emptyState').hidden = Boolean(offers.length);
-    $('#resultCount').textContent = `${offers.length} ${offers.length === 1 ? 'oferta encontrada' : 'ofertas encontradas'}`;
+    $('#resultCount').textContent = offers.length ? `${groups.length} ${groups.length === 1 ? 'destino' : 'destinos'} · ${offers.length} ${offers.length === 1 ? 'oferta' : 'ofertas'}` : '0 ofertas encontradas';
     if (loadError) {
       $('#emptyTitle').textContent = 'O radar não carregou agora.';
       $('#emptyMessage').textContent = 'Não foi possível consultar o arquivo de ofertas. Tente novamente em alguns instantes.';
@@ -187,7 +235,7 @@
       $('#emptyReset').hidden = false;
       $('#emptyReset').textContent = 'Limpar filtros';
     }
-    $$('#offersGrid img').forEach((image) => image.addEventListener('error', () => { image.hidden = true; }, { once: true }));
+    $$('#offersGrid img').forEach((image) => image.addEventListener('error', () => { image.hidden = true; if (image.nextElementSibling?.classList.contains('image-caption')) image.nextElementSibling.hidden = true; }, { once: true }));
   }
 
   function resetFilters() {
@@ -244,7 +292,7 @@
       openDialog(`<h2>Um caminho diferente pode valer a viagem.</h2>${positioning}`, 'NOVAS POSSIBILIDADES DE ROTA');
       return;
     }
-    openDialog(`<h2>Viajar leve começa com informação clara.</h2><p>O Rota Leve reúne preços anunciados em dinheiro e milhas saindo de Fortaleza e Recife, com links para você conferir cada oportunidade na fonte.</p><h3>O que significa uma oferta no radar?</h3><p>Uma publicação ou página de companhia pode anunciar uma tarifa que já não esteja disponível. Cada card mostra a fonte, a data da observação e a condição do preço. A confirmação final acontece no site onde você fará a reserva.</p><h3>Atualização e cobertura</h3>${schedule}<p>${escape(data.coverage?.summary || 'A cobertura depende das fontes conectadas. Não há garantia de busca em todas as companhias ou programas de fidelidade.')}</p>${sourceList}<h3>Dinheiro e milhas</h3><p>Os valores são por pessoa, na modalidade indicada: só ida ou ida e volta. Em milhas, as taxas são exibidas separadamente quando informadas. A ordenação por menor preço mantém dinheiro e milhas em grupos, pois são unidades diferentes.</p>${positioning}<h3>Favoritas, sem conta</h3><p>As estrelas são salvas apenas neste navegador. Elas não reservam uma tarifa e não enviam alertas. Limpar os dados do navegador remove suas favoritas.</p>`, 'FONTES E METODOLOGIA');
+    openDialog(`<h2>Viajar leve começa com informação clara.</h2><p>O Rota Leve reúne preços anunciados em dinheiro e milhas saindo de Fortaleza e Recife, com links para você conferir cada oportunidade na fonte.</p><h3>O que significa uma oferta no radar?</h3><p>Uma publicação ou página de companhia pode anunciar uma tarifa que já não esteja disponível. Cada destino reúne as datas encontradas, e os detalhes de cada data mostram a fonte, o momento da observação e a condição do preço. A confirmação final acontece no site onde você fará a reserva.</p><h3>Atualização e cobertura</h3>${schedule}<p>${escape(data.coverage?.summary || 'A cobertura depende das fontes conectadas. Não há garantia de busca em todas as companhias ou programas de fidelidade.')}</p>${sourceList}<h3>Dinheiro e milhas</h3><p>Os valores são por pessoa, na modalidade indicada: só ida ou ida e volta. Em milhas, as taxas são exibidas separadamente quando informadas. A ordenação por menor preço mantém dinheiro e milhas em grupos, pois são unidades diferentes.</p>${positioning}<h3>Favoritas, sem conta</h3><p>As estrelas são salvas apenas neste navegador. Elas não reservam uma tarifa e não enviam alertas. Limpar os dados do navegador remove suas favoritas.</p>`, 'FONTES E METODOLOGIA');
   }
 
   async function loadOffers() {
@@ -294,6 +342,15 @@
       const replacement = $$('#offersGrid [data-favorite]').find((button) => button.dataset.favorite === id);
       if (replacement) replacement.focus({ preventScroll: true });
       notify(saved ? 'Um novo plano salvo nas favoritas.' : 'Oferta removida das favoritas.');
+      return;
+    }
+    const toggle = event.target.closest('[data-group-toggle]');
+    if (toggle) {
+      const key = toggle.dataset.groupToggle;
+      if (expanded.has(key)) expanded.delete(key); else expanded.add(key);
+      render();
+      const replacement = $$('#offersGrid [data-group-toggle]').find((button) => button.dataset.groupToggle === key);
+      if (replacement) replacement.focus();
       return;
     }
     const details = event.target.closest('[data-details]');
