@@ -1,0 +1,7 @@
+{
+    "url":  "https://green-ground-03cab511e.3.azurestaticapps.net",
+    "name":  "rota-leve",
+    "resourceGroup":  "rg-rota-leve",
+    "location":  "West US 2",
+    "sku":  "Free"
+}

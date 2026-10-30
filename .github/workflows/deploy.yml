@@ -5,6 +5,7 @@ on:
     branches: [main]
     paths:
       - 'site/**'
+      - 'config/azure-deployment.json'
       - '.github/workflows/deploy.yml'
   workflow_dispatch:
   workflow_run:
@@ -14,6 +15,7 @@ on:
 
 permissions:
   contents: read
+  id-token: write
 
 concurrency:
   group: azure-production
@@ -23,7 +25,7 @@ jobs:
   deploy:
     if: github.event_name != 'workflow_run' || github.event.workflow_run.conclusion == 'success'
     runs-on: ubuntu-latest
-    timeout-minutes: 10
+    timeout-minutes: 15
     steps:
       - name: Baixar a versao atual de producao
         uses: actions/checkout@v4
@@ -39,20 +41,50 @@ jobs:
       - name: Validar catálogo e comparações
         run: npm run check && npm test
 
-      - name: Validar configuracao de publicacao
+      - name: Ler destino de publicacao
+        id: target
+        shell: bash
+        run: |
+          node <<'NODE'
+          const fs = require('node:fs');
+          const target = JSON.parse(fs.readFileSync('config/azure-deployment.json', 'utf8'));
+          const fields = ['clientId', 'tenantId', 'subscriptionId', 'resourceGroup', 'name'];
+          for (const field of fields) {
+            const value = target[field];
+            if (typeof value !== 'string' || !value || /[\r\n]/.test(value)) throw new Error(`Destino invalido: ${field}`);
+            fs.appendFileSync(process.env.GITHUB_OUTPUT, `${field}=${value}\n`);
+          }
+          NODE
+
+      - name: Autenticar somente este repositorio no Azure
+        uses: azure/login@v3
+        with:
+          client-id: ${{ steps.target.outputs.clientId }}
+          tenant-id: ${{ steps.target.outputs.tenantId }}
+          subscription-id: ${{ steps.target.outputs.subscriptionId }}
+
+      - name: Obter credencial temporariamente durante a publicacao
+        id: deployment
         shell: bash
         env:
-          AZURE_DEPLOYMENT_TOKEN: ${{ secrets.AZURE_STATIC_WEB_APPS_API_TOKEN }}
+          TARGET_SUBSCRIPTION: ${{ steps.target.outputs.subscriptionId }}
+          TARGET_GROUP: ${{ steps.target.outputs.resourceGroup }}
+          TARGET_NAME: ${{ steps.target.outputs.name }}
         run: |
-          if [ -z "$AZURE_DEPLOYMENT_TOKEN" ]; then
-            echo "::error::Configure o secret AZURE_STATIC_WEB_APPS_API_TOKEN no repositorio."
+          set -euo pipefail
+          deployment_token="$(az staticwebapp secrets list --subscription "$TARGET_SUBSCRIPTION" --resource-group "$TARGET_GROUP" --name "$TARGET_NAME" --query properties.apiKey --output tsv --only-show-errors)"
+          if [ -z "$deployment_token" ]; then
+            echo "::error::O Azure nao retornou a credencial de publicacao."
             exit 1
           fi
+          echo "::add-mask::$deployment_token"
+          echo "token=$deployment_token" >> "$GITHUB_OUTPUT"
+          unset deployment_token
 
       - name: Publicar site estatico
         uses: Azure/static-web-apps-deploy@v1
         with:
-          azure_static_web_apps_api_token: ${{ secrets.AZURE_STATIC_WEB_APPS_API_TOKEN }}
+          azure_static_web_apps_api_token: ${{ steps.deployment.outputs.token }}
           action: upload
           app_location: site
           api_location: ''

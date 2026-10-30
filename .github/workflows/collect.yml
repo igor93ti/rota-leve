@@ -1,6 +1,14 @@
 name: Atualizar ofertas
 
 on:
+  push:
+    branches: [main]
+    paths:
+      - 'config/sources.json'
+      - 'scripts/collect.mjs'
+      - 'scripts/lib/**'
+      - 'scripts/providers/**'
+      - '.github/workflows/collect.yml'
   schedule:
     # UTC: equivale a 00:17, 06:17, 12:17 e 18:17 em São Paulo.
     - cron: '17 3,9,15,21 * * *'
