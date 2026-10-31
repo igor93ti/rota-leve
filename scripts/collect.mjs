@@ -72,7 +72,7 @@ export async function collect({ offline = false, root = process.cwd(), now = new
   const temp = destination + '.tmp';
   await writeFile(temp, JSON.stringify(result, null, 2) + '\n');
   await rename(temp, destination);
-  console.log(JSON.stringify({ offers: offers.length, reposition: reposition.length, demand: demand.length, priorityPages: sources.filter(s => s.priority).length, sourcesOk: ok.length, sourceFailures: sources.filter(s => ['error', 'unparsed'].includes(s.status)).map(s => s.name), rejected: rejected.map(r => r.id), mode: result.run.status }));
+  console.log(JSON.stringify({ offers: offers.length, reposition: reposition.length, demand: demand.length, priorityPages: sources.filter(s => s.priority).length, routePages: sources.filter(s => s.route).reduce((total, s) => total + s.pages, 0), sourcesOk: ok.length, sourceFailures: sources.filter(s => ['error', 'unparsed'].includes(s.status)).map(s => s.name), rejected: rejected.map(r => r.id), mode: result.run.status }));
   return result;
 }
 

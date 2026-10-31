@@ -24,7 +24,7 @@ concurrency:
 jobs:
   collect:
     runs-on: ubuntu-latest
-    # 10 páginas fixas e até 8 páginas de rota pedidas nos perfis, em sequência.
+    # 10 páginas fixas, até 8 páginas de rota pedidas nos perfis e até 60 do rodízio, em sequência.
     timeout-minutes: 15
     steps:
       - uses: actions/checkout@v4

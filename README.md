@@ -39,7 +39,7 @@ O agendamento do GitHub é de melhor esforço: pode atrasar ou perder execuçõe
 
 Uma página promocional informa um **preço anunciado**, sem confirmar disponibilidade no pagamento. O preço final, as taxas, a bagagem e as regras precisam ser conferidos na companhia ou no programa. A coleta preserva a fonte, o momento da leitura e falhas de consulta; não renova anúncios antigos para esconder indisponibilidade.
 
-A página de origem de cada companhia mostra cerca de uma data por destino. Para os destinos pedidos nos perfis, o coletor também abre a página da rota publicada pela própria companhia, como `voos-de-fortaleza-para-lisboa`, que costuma trazer o calendário inteiro. São até 8 páginas extras por coleta, na ordem de quantas pessoas pediram e só no mesmo mercado e moeda da página de origem.
+A página de origem de cada companhia mostra cerca de uma data por destino. Por isso o coletor também abre as páginas de rota publicadas pelas próprias companhias, como `voos-de-fortaleza-para-lisboa`, que costumam trazer várias datas. Primeiro vêm até 8 rotas pedidas nos perfis, na ordem de quantas pessoas pediram. Depois, um rodízio de até 60 páginas por coleta percorre todas as rotas encontradas, cerca de 217, de modo que cada uma é relida em mais ou menos um dia. Só entram páginas do mesmo mercado e moeda da página de origem.
 
 Não existe nesta versão uma integração que consulte todas as companhias e programas. O coletor lê as páginas habilitadas em `config/sources.json`, e o agente complementa o catálogo em `sources/observations.json`. Valores genéricos sem origem e data de viagem identificadas não devem virar ofertas. Milhas de programas diferentes não representam o mesmo custo; taxas são registradas separadamente e `null` significa não informado.
 

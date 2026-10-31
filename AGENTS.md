@@ -86,12 +86,12 @@ Ficam fora do Git: `node_modules/`, `.azure/` (metadados locais e arquivos de tr
 O coletor só lê uma fonte quando estas condições valem juntas:
 - `enabled`, `automatic`, `allowed` e `official` são `true`;
 - `kind` é `airline-page`;
-- o host está em `OFFICIAL_HOSTS` no `airline-pages.mjs`, hoje Azul, GOL, TAP, Air France e KLM.
+- o host está em `OFFICIAL_HOSTS` no `airline-pages.mjs`, hoje Azul, GOL, TAP, Air France, KLM e JetSMART.
 
-Cada coleta lê no máximo 10 fontes. Os feeds Melhores Destinos e Passageiro de Primeira servem só de pista para o agente.
+Cada coleta lê no máximo 10 fontes de origem (`MAX_SOURCES`), já todas ocupadas. Os feeds Melhores Destinos e Passageiro de Primeira servem só de pista para o agente.
 
 Estado em 31/10/2026:
-- **Ativas (9):** Azul Fortaleza e Recife; GOL Fortaleza, Recife e Recife–Argentina; TAP Fortaleza–Lisboa e Recife–Lisboa; Air France Fortaleza; KLM Recife.
+- **Ativas (10):** Azul Fortaleza e Recife; GOL Fortaleza, Recife e Recife–Argentina; TAP Fortaleza–Lisboa e Recife–Lisboa; Air France Fortaleza; KLM Recife; JetSMART Recife (a JetSMART não tem página de Fortaleza).
 - **Desativadas:**
   - Azul Guarulhos: a página devolve 404.
   - Azul Campinas: só trazia saídas de VCP, que o catálogo descarta.
@@ -109,16 +109,20 @@ As páginas usam o motor EveryMundo/airTRFX, feito em Next.js. O parser:
 
 As requisições são sequenciais, sem seguir redirecionamentos, com limite de 25 segundos e 8 MB e User-Agent `RotaLeveRadar/1.0`. Uma fonte que falha aparece no catálogo com `status: "error"` ou `"unparsed"`, sem ofertas inventadas. Uma tarifa cujo destino não está em `AIRPORTS` é descartada; para ela aparecer, inclua o aeroporto com cidade e país em pt-BR.
 
-### Páginas de rota guiadas pelos perfis
+### Páginas de rota: pedidos e rodízio
 
-A página de origem de cada companhia mostra cerca de uma data por destino. Quando há pedidos em `/api/demand`, o coletor procura, nas páginas que já baixou, links como `voos-de-fortaleza-para-lisboa` (função `routeLinks`). Ele abre até 8 dessas páginas de rota por coleta, começando pelos destinos mais pedidos.
+A página de origem de cada companhia mostra cerca de uma data por destino; a página de rota costuma trazer várias datas. O coletor procura, nas páginas de origem que acabou de baixar, links como `voos-de-fortaleza-para-lisboa` (função `routeLinks`). Em 31/10/2026 eram 217 rotas.
 
-Regras:
-- o link precisa estar no mesmo host e no mesmo mercado da página de origem (primeiro segmento do caminho), para não mudar a moeda;
+Regras dos links:
+- o link precisa estar no mesmo host e no mesmo diretório da página de origem (`/pt/`, `/pt_br/`, `/ofertas/pt-br/`...), para não trocar de mercado e de moeda;
 - a origem precisa ser FOR ou REC;
-- só contam os pedidos com destino definido.
+- a cidade do link precisa existir em `AIRPORTS`. Quando a companhia escreve diferente do nome em pt-BR (`montevideo`, `bancoque`, `edimburgo-escocia`), o apelido vai em `SLUG_ALIASES`.
 
-Essas páginas aparecem nas fontes com `priority: true` e id `<fonte>-<cidade>`. A variável `ROTA_LEVE_DEMAND_URL` substitui o endereço da demanda. Se a demanda não responder, a coleta segue só com as fontes fixas.
+`selectRoutes` escolhe as páginas de cada coleta:
+1. **Pedidos dos perfis:** até 8 páginas (`DEMAND_ROUTES_PER_RUN`) dos destinos mais pedidos em `/api/demand`; só contam pedidos com destino definido. Aparecem nas fontes com `priority: true` e id `<fonte>-<cidade>`.
+2. **Rodízio:** as demais rotas, em ordem de URL, divididas em fatias de até 60 (`ROTATION_ROUTES_PER_RUN`). Cada janela de 6 horas lê a fatia seguinte, então cada rota é relida em cerca de um dia, dentro do prazo de 48 horas das ofertas. Para a lista de fontes do site continuar legível, o rodízio vira uma linha por fonte de origem (`<fonte>-rotas`, com `route: true`, `pages`, `empty`, `failed` e o primeiro erro). Página sem tarifa futura conta como `empty`, não como falha.
+
+Uma coleta faz até 10 + 8 + 60 requisições, em sequência. A variável `ROTA_LEVE_DEMAND_URL` substitui o endereço da demanda. Se a demanda não responder, a coleta segue com as fontes fixas e o rodízio.
 
 ### Montagem do catálogo
 
@@ -291,8 +295,8 @@ npm run collect:offline  # refaz o catálogo só com dados locais
 ## Mudanças comuns
 
 **Nova fonte de companhia:**
-1. Confirme que a página é pública, oficial e usa o mesmo formato (`__NEXT_DATA__` com objetos `Fare`).
-2. Adicione o host em `OFFICIAL_HOSTS` e a fonte em `config/sources.json`, respeitando o limite de 10.
+1. Confirme que a página é pública, oficial, permitida no `robots.txt`, em BRL e no mesmo formato (`__NEXT_DATA__` com objetos `Fare`).
+2. Adicione o host em `OFFICIAL_HOSTS` e a fonte em `config/sources.json`. As 10 vagas de origem já estão ocupadas: troque uma fonte ou aumente `MAX_SOURCES` com cuidado.
 3. Inclua em `AIRPORTS` os aeroportos que faltarem.
 4. Cubra o novo formato com um fixture em `tests/`.
 
@@ -305,6 +309,8 @@ Um formato diferente pede um parser próprio com testes, nunca o contorno de um 
 - o formulário e os textos de `site/app.js` e `site/index.html`.
 
 Depois, adicione as fontes da nova cidade.
+
+**Cidade nova nos links de rota:** inclua o aeroporto em `AIRPORTS` com cidade e país em pt-BR. Se a companhia escrever a cidade de outro jeito no link, acrescente o apelido em `SLUG_ALIASES`.
 
 **Cidades com mais de um aeroporto:** a tabela de códigos de cidade existe em dois lugares, `metroCodes` em `site/app.js` e `METRO` em `airline-pages.mjs`, e as duas precisam ficar iguais.
 
@@ -340,8 +346,10 @@ Antes de concluir qualquer mudança, rode `npm run check` e `npm test`.
   - O alvo é um MVP para até 10 pessoas, só em camadas gratuitas; escalar fica para depois.
   - A proibição de contornar login, captcha e bloqueios continua valendo. Os ganhos de cobertura vêm de páginas públicas, como as de rota.
 - **31/10/2026:** o radar pessoal foi publicado (commit `d151e7d`) e o Cosmos foi criado. Gravar, reler, somar na demanda e excluir um perfil foram testados em produção com login Microsoft.
+- **31/10/2026:** o coletor passou a ler todas as páginas de rota em rodízio, ganhou a JetSMART e 26 cidades novas. Antes, abria no máximo 8 páginas de rota e só para destinos pedidos.
 
 Fontes avaliadas e não usadas:
+- **Bibliotecas do Google Flights** (fast-flights, fli e similares): usam endpoints internos do Google sem contrato, quebram quando ele muda e, sob volume, dependem de proxies para escapar de bloqueio, o que fere a regra 3. Os termos do Google também não permitem redistribuir o conteúdo dele num site público.
 - **Amadeus Self-Service:** desligada em julho de 2026, segundo fontes de terceiros.
 - **Travelpayouts:** gratuita, mas exige cadastro de parceiro e só tem preços em cache vistos por outros usuários.
 - **Google Flights:** não tem API.
@@ -351,5 +359,7 @@ LATAM, LATAM Pass e Smiles dependem da pesquisa do agente. Em milhas, a coleta a
 ## Pendências conhecidas
 
 - Os avisos de entrada desconhecida e de Node 20 no deploy.
+- Nas coletas de teste de 31/10/2026, 10 de 12 páginas de rota da Air France e as da JetSMART vieram sem tarifa. O rodízio ainda as relê todo dia; dá para pular rotas vazias no futuro.
+- As companhias anunciam sobretudo as próximas semanas: novembro e dezembro concentram a maior parte das ofertas, e 2027 continua escasso.
 - Falta um parser para a LATAM e para outros motores, e faltam mais programas de milhas.
 - Ainda não há candidato de reposicionamento com evidência suficiente.
