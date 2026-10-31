@@ -47,7 +47,7 @@ Não existe nesta versão uma integração que consulte todas as companhias e pr
 
 ## Radar pessoal
 
-Com login Microsoft ou GitHub, cada pessoa escolhe até 5 janelas de embarque de até 62 dias, com origem FOR ou REC, destino opcional, forma de pagamento e tipo de viagem. O site mostra quantas ofertas do catálogo caem em cada janela e marca essas datas com "Sua data". O login usa os provedores que já vêm prontos no Static Web Apps Free.
+Com login Microsoft ou GitHub, cada pessoa escolhe até 5 janelas de embarque de até 62 dias, com origem FOR ou REC, destino opcional, forma de pagamento e tipo de viagem. O site mostra quantas ofertas do catálogo caem em cada janela e marca essas datas com "Sua data". Cada janela também tem um link para comparar no Google Flights, aberto no navegador da pessoa; o radar não coleta dados do Google. O login usa os provedores que já vêm prontos no Static Web Apps Free.
 
 - `api/`: funções gerenciadas do Static Web App em Node 22. `/api/profile` exige login. `/api/demand` é pública e devolve só pedidos somados: origem, destino IATA, janela, pagamento, tipo e número de pessoas.
 - Dados guardados: um hash do identificador do login e as janelas. Não há nome, e-mail nem texto livre. A pessoa pode excluir o perfil pelo site.

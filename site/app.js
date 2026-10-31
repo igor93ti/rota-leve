@@ -240,6 +240,16 @@
     return `<article class="offer-card destination-card" aria-labelledby="dest-${escape(group.key)}"><div class="card-cover"><div class="cover-fallback${airports.length > 1 ? ' multi' : ''}" data-tone="${tone(group.key)}" aria-hidden="true">${escape(airports.join(' '))}</div>${cover}<div class="cover-badges">${badges}</div></div><div class="card-body"><div class="destination-title"><h3 id="dest-${escape(group.key)}">${escape(group.city)}</h3><span>${escape(group.country)}</span></div><div class="card-route"><span>${escape(state.origin)}</span><span class="route-arrow">⟶</span><span>${escape(airports.join(' · '))}</span><span class="stops">${escape(airlines)}</span></div><div class="from-label">A partir de</div><div class="from-prices">${fromPrices}</div><div class="trip-dates">${calendarIcon}<span>${escape(dateRange(departures[0], departures.at(-1)))}</span><span>${offers.length} ${offers.length === 1 ? 'opção' : 'opções'}</span></div><ol class="fare-list" id="fares-${escape(group.key)}" aria-label="Datas e preços para ${escape(group.city)}">${visible.map((offer) => fareRow(offer, group, highlights.includes(offer.id))).join('')}</ol>${toggle}<div class="card-source"><span title="${escape(sources)}">${escape(sources || 'Fonte da oferta')}</span><span>Anunciado ${escape(date(latest))}</span></div></div></article>`;
   }
 
+  // Abre a busca do próprio Google Flights no navegador da pessoa, no primeiro dia da janela.
+  // O radar não consulta nem guarda resultados do Google.
+  function googleFlightsUrl(priority) {
+    const oneway = priority.tripType === 'roundtrip' ? '' : ' one way';
+    const url = new URL(priority.destination ? 'https://www.google.com/travel/flights' : 'https://www.google.com/travel/explore');
+    const query = priority.destination ? `Flights from ${priority.origin} to ${priority.destination} on ${priority.from}${oneway}` : `Flights from ${priority.origin} on ${priority.from}`;
+    url.search = new URLSearchParams({ q: query, hl: 'pt-BR', gl: 'BR', curr: 'BRL' }).toString();
+    return url.href;
+  }
+
   function renderRadar() {
     const section = $('#personalRadar');
     const list = priorities();
@@ -266,7 +276,7 @@
       const status = found.length
         ? `<strong>${found.length} ${found.length === 1 ? 'oferta' : 'ofertas'} nessas datas</strong>${cash.length ? ` · a partir de ${escape(money(Math.min(...cash)))}` : ' · em milhas'}`
         : '<strong>Nada no radar ainda.</strong> Essa busca tem prioridade nas próximas coletas.';
-      return `<li class="priority-card${found.length ? ' found' : ''}"><div class="priority-route"><span>${escape(priority.origin)}</span><span class="route-arrow">⟶</span><strong>${escape(destinationName(priority.destination))}</strong></div><div class="priority-window">${calendarIcon}<span>${escape(windowLabel(priority))}</span></div><div class="priority-tags"><span>${escape(tripLabels[priority.tripType])}</span><span>${escape(paymentLabels[priority.payment])}</span></div><p class="priority-status">${status}</p><div class="priority-actions">${found.length ? `<button class="button-secondary" data-radar-view="${escape(priority.id)}">Ver ofertas</button>` : ''}<button class="text-button" data-radar-edit="${escape(priority.id)}">Editar</button><button class="text-button" data-radar-remove="${escape(priority.id)}">Remover</button></div></li>`;
+      return `<li class="priority-card${found.length ? ' found' : ''}"><div class="priority-route"><span>${escape(priority.origin)}</span><span class="route-arrow">⟶</span><strong>${escape(destinationName(priority.destination))}</strong></div><div class="priority-window">${calendarIcon}<span>${escape(windowLabel(priority))}</span></div><div class="priority-tags"><span>${escape(tripLabels[priority.tripType])}</span><span>${escape(paymentLabels[priority.payment])}</span></div><p class="priority-status">${status}</p><a class="priority-compare" href="${escape(googleFlightsUrl(priority))}" target="_blank" rel="noopener noreferrer" title="Abre o Google Flights em nova aba, a partir de ${escape(date(priority.from, true))}">Comparar no Google Flights <span aria-hidden="true">↗</span></a><div class="priority-actions">${found.length ? `<button class="button-secondary" data-radar-view="${escape(priority.id)}">Ver ofertas</button>` : ''}<button class="text-button" data-radar-edit="${escape(priority.id)}">Editar</button><button class="text-button" data-radar-remove="${escape(priority.id)}">Remover</button></div></li>`;
     }).join('');
     const add = list.length < maxPriorities ? `<li><button class="priority-add" data-radar-add><span aria-hidden="true">+</span>${list.length ? 'Adicionar data' : 'Adicionar a primeira data'}</button></li>` : '';
     section.innerHTML = `<div class="radar-head"><div>${heading(list.length ? 'Suas datas prioritárias' : 'Quando você quer viajar?')}${list.length ? '' : '<p>Escolha uma janela de datas e, se quiser, um destino. O radar procura essas datas primeiro.</p>'}</div>${tools}</div><ol class="priority-list">${cards}${add}</ol>`;

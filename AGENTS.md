@@ -168,7 +168,8 @@ Hoje a lista está vazia. Não preencha com exemplos.
   - `loadAccount` lê `/.auth/me` e depois `/api/profile`;
   - `saveProfile`, `submitPriority` e `deleteProfile` gravam as mudanças;
   - `renderRadar` mostra as janelas e quantas ofertas caem em cada uma;
-  - as ofertas que batem com uma janela ganham a etiqueta "Sua data".
+  - as ofertas que batem com uma janela ganham a etiqueta "Sua data";
+  - cada janela tem o link "Comparar no Google Flights" (`googleFlightsUrl`), que abre no navegador da pessoa a busca do Google para a rota no primeiro dia da janela, ou o Explorar quando não há destino. O radar não consulta nem guarda resultados do Google.
 - Todos os textos são em português do Brasil; `check.mjs` exige `lang="pt-BR"` e viewport.
 - Cache: páginas por 300 segundos; `/data/*` por 60 segundos com revalidação; `/api/demand` por 300 segundos; `/api/profile` e `/.auth/*` sem cache.
 
