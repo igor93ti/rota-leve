@@ -2,6 +2,8 @@
 
 O usuário autorizou pesquisa e publicação de preços anunciados e a criação de um repositório GitHub para este projeto. Não comprar ou reservar bilhetes. Hospedar somente em Azure Static Web Apps **Free**. A consulta de ofertas é pública. O radar pessoal usa o login Microsoft ou GitHub do próprio Static Web Apps e guarda as datas prioritárias no Cosmos DB na camada gratuita.
 
+A arquitetura, os contratos de dados e as armadilhas conhecidas estão em [AGENTS.md](../AGENTS.md).
+
 Produção: [Rota Leve](https://green-ground-03cab511e.3.azurestaticapps.net). Repositório: [igor93ti/rota-leve](https://github.com/igor93ti/rota-leve), branch `main`. A publicação inicial foi verificada com HTTP 200. Confira o resultado de cada atualização no [histórico de Actions](https://github.com/igor93ti/rota-leve/actions); não presuma sucesso somente porque há um workflow no repositório.
 
 ## A cada varredura
