@@ -339,7 +339,7 @@ Antes de concluir qualquer mudança, rode `npm run check` e `npm test`.
   - A migração para .NET com SQL foi avaliada e não entrou no MVP: os perfis ficaram no Cosmos gratuito, com a API em Node.
   - O alvo é um MVP para até 10 pessoas, só em camadas gratuitas; escalar fica para depois.
   - A proibição de contornar login, captcha e bloqueios continua valendo. Os ganhos de cobertura vêm de páginas públicas, como as de rota.
-- **31/10/2026:** o radar pessoal foi publicado (commit `d151e7d`) e o Cosmos foi criado.
+- **31/10/2026:** o radar pessoal foi publicado (commit `d151e7d`) e o Cosmos foi criado. Gravar, reler, somar na demanda e excluir um perfil foram testados em produção com login Microsoft.
 
 Fontes avaliadas e não usadas:
 - **Amadeus Self-Service:** desligada em julho de 2026, segundo fontes de terceiros.
@@ -350,7 +350,6 @@ LATAM, LATAM Pass e Smiles dependem da pesquisa do agente. Em milhas, a coleta a
 
 ## Pendências conhecidas
 
-- A gravação de um perfil em produção com login real ainda não foi testada de ponta a ponta. A leitura do Cosmos, pela `/api/demand`, já foi.
 - Os avisos de entrada desconhecida e de Node 20 no deploy.
 - Falta um parser para a LATAM e para outros motores, e faltam mais programas de milhas.
 - Ainda não há candidato de reposicionamento com evidência suficiente.
