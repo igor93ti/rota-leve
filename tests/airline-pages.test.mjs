@@ -1,7 +1,7 @@
 import test from 'node:test';
 import assert from 'node:assert/strict';
 import {readFile} from 'node:fs/promises';
-import {parseAirlinePage,collectAirlinePages} from '../scripts/providers/airline-pages.mjs';
+import {parseAirlinePage,collectAirlinePages,routeLinks} from '../scripts/providers/airline-pages.mjs';
 
 const now = new Date('2026-10-30T17:26:26Z');
 const source = {id:'azul-for',name:'Azul',airline:'Azul',program:'Azul Fidelidade',url:'https://passagens.voeazul.com.br/pt/voos-de-fortaleza',kind:'airline-page',official:true,allowed:true,automatic:true,enabled:true};
@@ -43,4 +43,22 @@ test('parses a minimal fixture from the observed airline GraphQL cache shape',as
   const offers=parseAirlinePage(html,{source,now});
   assert.equal(offers.length,2);
   assert.deepEqual(offers.map(x=>[x.destination,x.price,x.type]),[['REC',474.86,'cash'],['REC',15000,'miles']]);
+});
+
+test('reads only official same-host route links that start in FOR or REC',()=>{
+  const html = '<a href="voos-de-fortaleza-para-sao-paulo">SP</a><a href="voos-de-fortaleza-para-bancoque">?</a><a href="voos-de-campinas-para-lisboa">VCP</a><a href="https://example.com/voos-de-fortaleza-para-lisboa">fake</a><a href="https://www.voegol.com.br/br/voos-de-fortaleza-para-lisboa">outro host</a><a href="/en/voos-de-fortaleza-para-lisboa">outro mercado</a>';
+  assert.deepEqual(routeLinks(html,source),[{url:'https://passagens.voeazul.com.br/pt/voos-de-fortaleza-para-sao-paulo',origin:'FOR',city:'São Paulo',destinations:['SAO']}]);
+});
+
+test('profile demand adds route pages for requested cities, most requested first',async()=>{
+  const origin = `<a href="voos-de-fortaleza-para-sao-paulo"></a><a href="voos-de-fortaleza-para-lisboa"></a><a href="voos-de-fortaleza-para-recife"></a>${htmlFor([fare])}`;
+  const route = htmlFor([{...fare,destinationAirportCode:'GRU',departureDate:'2027-01-10'},{...fare,destinationAirportCode:'CGH',departureDate:'2027-01-12'}]);
+  const requested = [];
+  const fetchImpl = async url => { requested.push(url); return {ok:true,status:200,headers:new Headers({'content-type':'text/html'}),text:async()=>url.endsWith('voos-de-fortaleza') ? origin : route}; };
+  const demand = [{origin:'FOR',destination:'SAO',people:2},{origin:'REC',destination:'LIS',people:1},{origin:'FOR',destination:null,people:1}];
+  const result = await collectAirlinePages({sources:[source],now,fetchImpl,demand});
+  assert.deepEqual(requested,[source.url,'https://passagens.voeazul.com.br/pt/voos-de-fortaleza-para-sao-paulo']);
+  assert.deepEqual(result.sources.map(x=>[x.name,x.status,x.count,Boolean(x.priority)]),[['Azul','ok',1,false],['Azul · Fortaleza → São Paulo','ok',2,true]]);
+  const without = await collectAirlinePages({sources:[source],now,fetchImpl:async()=>({ok:true,status:200,headers:new Headers({'content-type':'text/html'}),text:async()=>origin})});
+  assert.equal(without.sources.length,1,'sem perfis, nenhuma página extra');
 });

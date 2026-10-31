@@ -7,7 +7,7 @@ const failures = [];
 async function checkDir(directory) {
   for (const entry of await readdir(directory, { withFileTypes: true })) {
     const path = join(directory, entry.name);
-    if (entry.isDirectory()) await checkDir(path);
+    if (entry.isDirectory()) { if (entry.name !== 'node_modules') await checkDir(path); }
     else if (/\.(mjs|js)$/.test(entry.name)) {
       const result = spawnSync(process.execPath, ['--check', path], { encoding: 'utf8' });
       if (result.status !== 0) failures.push(result.stderr);
@@ -16,7 +16,7 @@ async function checkDir(directory) {
     }
   }
 }
-for (const directory of ['site', 'scripts', 'sources', 'config']) await checkDir(directory);
+for (const directory of ['site', 'scripts', 'sources', 'config', 'api']) await checkDir(directory);
 const data = JSON.parse(await readFile('site/data/offers.json', 'utf8'));
 for (const offer of data.offers) {
   const errors = validateOffer(offer);

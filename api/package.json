@@ -1,0 +1,11 @@
+{
+  "name": "rota-leve-api",
+  "version": "1.0.0",
+  "private": true,
+  "type": "module",
+  "main": "src/functions/*.js",
+  "engines": { "node": ">=22" },
+  "dependencies": {
+    "@azure/functions": "4.17.0"
+  }
+}

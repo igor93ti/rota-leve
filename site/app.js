@@ -12,6 +12,13 @@
     FEN: 'photo-1519046904884-53103b34b206', SSA: 'photo-1519046904884-53103b34b206'
   };
   const previewFares = 3;
+  // Prioridades guardam a cidade, então aeroportos da mesma cidade contam como o mesmo destino.
+  const metroCodes = { GRU: 'SAO', CGH: 'SAO', GIG: 'RIO', SDU: 'RIO', CDG: 'PAR', ORY: 'PAR', EZE: 'BUE', AEP: 'BUE', CNF: 'BHZ', LHR: 'LON', LGW: 'LON', JFK: 'NYC', EWR: 'NYC', NRT: 'TYO', HND: 'TYO', DSS: 'DKR' };
+  const cityCode = (code) => metroCodes[code] || code;
+  const maxPriorities = 5;
+  const maxWindowDays = 62;
+  const paymentLabels = { any: 'Dinheiro ou milhas', cash: 'Dinheiro', miles: 'Milhas' };
+  const tripLabels = { any: 'Só ida ou ida e volta', oneway: 'Só ida', roundtrip: 'Ida e volta' };
   const escape = (value) => String(value ?? '').replace(/[&<>"']/g, (character) => ({ '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;', "'": '&#39;' }[character]));
   const normalize = (value) => String(value ?? '').normalize('NFD').replace(/[\u0300-\u036f]/g, '').toLowerCase();
   const money = (value) => Number.isFinite(Number(value)) ? new Intl.NumberFormat('pt-BR', { style: 'currency', currency: 'BRL', maximumFractionDigits: 2 }).format(Number(value)) : 'Não informado';
@@ -45,8 +52,10 @@
   let favorites = new Set();
   try { const saved = JSON.parse(localStorage.getItem('rotaleve.favorites') || '[]'); if (Array.isArray(saved)) favorites = new Set(saved.filter((id) => typeof id === 'string')); } catch { /* Browser storage is optional. */ }
   let data = { offers: [], coverage: { summary: '', sources: [] } };
-  let state = { origin: 'FOR', payment: 'all', region: 'all', search: '', sort: 'price', budget: 100, direct: false, reposition: false, favorites: false };
+  let state = { origin: 'FOR', payment: 'all', region: 'all', search: '', sort: 'price', budget: 100, direct: false, reposition: false, favorites: false, priority: null };
   let expanded = new Set();
+  // status: loading, signed-out, ready ou unavailable (fora do Static Web Apps, sem /.auth).
+  let account = { status: 'loading', user: null, profile: null, error: '' };
   let loadError = false;
   let toastTimer;
 
@@ -57,10 +66,16 @@
     toastTimer = setTimeout(() => $('#toast').classList.remove('visible'), 2600);
   }
 
-  function activeOffers() {
+  function todayIso() {
     const parts = new Intl.DateTimeFormat('en-CA', { timeZone: 'America/Sao_Paulo', year: 'numeric', month: '2-digit', day: '2-digit' }).formatToParts(new Date());
     const component = (type) => parts.find((part) => part.type === type).value;
-    const today = `${component('year')}-${component('month')}-${component('day')}`;
+    return `${component('year')}-${component('month')}-${component('day')}`;
+  }
+  const addDays = (day, days) => new Date(Date.parse(`${day}T00:00:00Z`) + days * 86400000).toISOString().slice(0, 10);
+  const daysBetween = (first, last) => Math.round((Date.parse(`${last}T00:00:00Z`) - Date.parse(`${first}T00:00:00Z`)) / 86400000);
+
+  function activeOffers() {
+    const today = todayIso();
     return data.offers.filter((offer) => {
       if (offer.validUntil && new Date(offer.validUntil).valueOf() < Date.now()) return false;
       if (/^\d{4}-\d{2}-\d{2}$/.test(offer.departureDate) && offer.departureDate < today) return false;
@@ -109,6 +124,9 @@
     $('#pageLabel').textContent = state.favorites ? 'Favoritas' : 'Explorar';
     $('#offersTitle').innerHTML = state.favorites ? 'Seus próximos planos<span>.</span>' : 'Bons achados para você<span>.</span>';
     $('#favoriteCount').textContent = favorites.size;
+    const priority = activePriority();
+    $('#priorityFilter').hidden = !priority;
+    $('#priorityFilterLabel').textContent = priority ? `${destinationName(priority.destination)} · ${windowLabel(priority)}` : '';
   }
 
   function renderMetrics() {
@@ -134,9 +152,25 @@
     $('#coverageSummary').textContent = data.coverage?.summary || 'A cobertura varia por fonte. Cada preço inclui um link para consultar os detalhes e a disponibilidade.';
   }
 
+  const priorities = () => account.profile?.priorities || [];
+  const activePriority = () => priorities().find((priority) => priority.id === state.priority) || null;
+  const priorityMatches = (offer, priority) => offer.origin === priority.origin
+    && (!priority.destination || cityCode(offer.destination) === priority.destination)
+    && /^\d{4}-\d{2}-\d{2}$/.test(offer.departureDate || '') && offer.departureDate >= priority.from && offer.departureDate <= priority.to
+    && (priority.payment === 'any' || offer.type === priority.payment)
+    && (priority.tripType === 'any' || offer.tripType === priority.tripType);
+  const destinationName = (code) => {
+    if (!code) return 'Qualquer destino';
+    const offer = data.offers.find((item) => cityCode(item.destination) === code && item.destinationCity);
+    return offer ? offer.destinationCity : cityNames[code] || code;
+  };
+  const windowLabel = (priority) => priority.from.slice(0, 7) === priority.to.slice(0, 7) ? `${dayTile(priority.from).day} – ${date(priority.to, true)}` : `${date(priority.from)} – ${date(priority.to, true)}`;
+
   function filteredOffers() {
     const query = normalize(state.search.trim());
+    const priority = activePriority();
     const offers = activeOffers().filter((offer) => offer.origin === state.origin
+      && (!priority || priorityMatches(offer, priority))
       && (state.payment === 'all' || offer.type === state.payment)
       && (state.region === 'all' || offer.region === state.region)
       && (!state.favorites || favorites.has(offer.id))
@@ -181,7 +215,7 @@
     const meta = [miles ? offer.program || offer.airline : offer.airline, group.airports.length > 1 ? offer.destination : null, offer.reposition ? `via ${offer.reposition.via}` : null, offer.stops === 0 && !offer.reposition ? 'Direto' : null, offer.reposition?.savings > 0 ? `economia de ${money(offer.reposition.savings)}` : null].filter(Boolean).join(' · ');
     const price = miles ? `${integer(offer.price)}<small>${escape(offer.unit || 'pts')}</small>` : escape(money(offer.price));
     const taxes = !miles ? '' : offer.taxes === 0 ? 'Taxas R$ 0,00' : Number.isFinite(offer.taxes) ? `+ ${money(offer.taxes)}` : '+ taxas';
-    return `<li class="fare-row${miles ? ' miles' : ''}"><button class="fare-main" data-details="${escape(offer.id)}"><span class="sr-only">Ver detalhes: </span><span class="fare-date"><strong>${escape(tile.day)}</strong><small>${escape(tile.month)}</small></span><span class="fare-info"><span class="fare-when">${escape(when)}</span><span class="fare-meta">${best ? '<span class="best-tag">Menor preço</span>' : ''}<span>${escape(meta)}</span></span></span><span class="fare-price"><strong>${price}</strong>${taxes ? `<small>${escape(taxes)}</small>` : ''}</span></button><button class="favorite-button fare-favorite ${saved ? 'saved' : ''}" data-favorite="${escape(offer.id)}" aria-label="${saved ? 'Remover' : 'Salvar'} ${escape(group.city)} em ${escape(date(offer.departureDate))} ${saved ? 'das favoritas' : 'nas favoritas'}" aria-pressed="${saved}">${starIcon}</button></li>`;
+    return `<li class="fare-row${miles ? ' miles' : ''}"><button class="fare-main" data-details="${escape(offer.id)}"><span class="sr-only">Ver detalhes: </span><span class="fare-date"><strong>${escape(tile.day)}</strong><small>${escape(tile.month)}</small></span><span class="fare-info"><span class="fare-when">${escape(when)}</span><span class="fare-meta">${priorities().some((priority) => priorityMatches(offer, priority)) ? '<span class="best-tag mine">Sua data</span>' : ''}${best ? '<span class="best-tag">Menor preço</span>' : ''}<span>${escape(meta)}</span></span></span><span class="fare-price"><strong>${price}</strong>${taxes ? `<small>${escape(taxes)}</small>` : ''}</span></button><button class="favorite-button fare-favorite ${saved ? 'saved' : ''}" data-favorite="${escape(offer.id)}" aria-label="${saved ? 'Remover' : 'Salvar'} ${escape(group.city)} em ${escape(date(offer.departureDate))} ${saved ? 'das favoritas' : 'nas favoritas'}" aria-pressed="${saved}">${starIcon}</button></li>`;
   }
 
   function groupCard(group, index) {
@@ -206,9 +240,42 @@
     return `<article class="offer-card destination-card" aria-labelledby="dest-${escape(group.key)}"><div class="card-cover"><div class="cover-fallback${airports.length > 1 ? ' multi' : ''}" data-tone="${tone(group.key)}" aria-hidden="true">${escape(airports.join(' '))}</div>${cover}<div class="cover-badges">${badges}</div></div><div class="card-body"><div class="destination-title"><h3 id="dest-${escape(group.key)}">${escape(group.city)}</h3><span>${escape(group.country)}</span></div><div class="card-route"><span>${escape(state.origin)}</span><span class="route-arrow">⟶</span><span>${escape(airports.join(' · '))}</span><span class="stops">${escape(airlines)}</span></div><div class="from-label">A partir de</div><div class="from-prices">${fromPrices}</div><div class="trip-dates">${calendarIcon}<span>${escape(dateRange(departures[0], departures.at(-1)))}</span><span>${offers.length} ${offers.length === 1 ? 'opção' : 'opções'}</span></div><ol class="fare-list" id="fares-${escape(group.key)}" aria-label="Datas e preços para ${escape(group.city)}">${visible.map((offer) => fareRow(offer, group, highlights.includes(offer.id))).join('')}</ol>${toggle}<div class="card-source"><span title="${escape(sources)}">${escape(sources || 'Fonte da oferta')}</span><span>Anunciado ${escape(date(latest))}</span></div></div></article>`;
   }
 
+  function renderRadar() {
+    const section = $('#personalRadar');
+    const list = priorities();
+    $('#accountButton').hidden = account.status === 'loading' || account.status === 'unavailable';
+    $('#accountButton').textContent = account.status === 'ready' ? 'Meu radar' : 'Entrar';
+    $('#radarCount').hidden = !list.length;
+    $('#radarCount').textContent = list.length;
+    $('#navRadar').hidden = account.status === 'unavailable';
+    section.hidden = account.status === 'loading' || account.status === 'unavailable';
+    if (section.hidden) return;
+    const heading = (title) => `<span class="section-eyebrow">SEU RADAR PESSOAL</span><h2 id="radarTitle" tabindex="-1">${title}${title.endsWith('?') ? '' : '<span>.</span>'}</h2>`;
+    if (account.status === 'signed-out') {
+      section.innerHTML = `<div class="radar-intro"><div>${heading('Diga quando você quer viajar')}<p>Escolha até ${maxPriorities} janelas de datas, com ou sem destino. O radar procura essas datas primeiro e mostra aqui o que encontrar.</p></div><div class="radar-login"><a class="login-option" href="/.auth/login/aad?post_login_redirect_uri=/">Entrar com Microsoft</a><a class="login-option" href="/.auth/login/github?post_login_redirect_uri=/">Entrar com GitHub</a><small>Guardamos só um código do seu login e as datas que você escolher.</small></div></div>`;
+      return;
+    }
+    const tools = `<div class="radar-tools"><span class="radar-user" title="Conta usada no login">${escape(account.user?.userDetails || 'Conta conectada')}</span>${account.profile ? '<button class="text-button" data-radar-delete>Excluir perfil</button>' : ''}<a class="text-button" href="/.auth/logout?post_logout_redirect_uri=/">Sair</a></div>`;
+    if (account.error) {
+      section.innerHTML = `<div class="radar-head"><div>${heading('Seu radar pessoal')}</div>${tools}</div><p class="radar-message">${escape(account.error)}</p>`;
+      return;
+    }
+    const cards = list.map((priority) => {
+      const found = activeOffers().filter((offer) => priorityMatches(offer, priority));
+      const cash = found.filter((offer) => offer.type === 'cash').map((offer) => Number(offer.price));
+      const status = found.length
+        ? `<strong>${found.length} ${found.length === 1 ? 'oferta' : 'ofertas'} nessas datas</strong>${cash.length ? ` · a partir de ${escape(money(Math.min(...cash)))}` : ' · em milhas'}`
+        : '<strong>Nada no radar ainda.</strong> Essa busca tem prioridade nas próximas coletas.';
+      return `<li class="priority-card${found.length ? ' found' : ''}"><div class="priority-route"><span>${escape(priority.origin)}</span><span class="route-arrow">⟶</span><strong>${escape(destinationName(priority.destination))}</strong></div><div class="priority-window">${calendarIcon}<span>${escape(windowLabel(priority))}</span></div><div class="priority-tags"><span>${escape(tripLabels[priority.tripType])}</span><span>${escape(paymentLabels[priority.payment])}</span></div><p class="priority-status">${status}</p><div class="priority-actions">${found.length ? `<button class="button-secondary" data-radar-view="${escape(priority.id)}">Ver ofertas</button>` : ''}<button class="text-button" data-radar-edit="${escape(priority.id)}">Editar</button><button class="text-button" data-radar-remove="${escape(priority.id)}">Remover</button></div></li>`;
+    }).join('');
+    const add = list.length < maxPriorities ? `<li><button class="priority-add" data-radar-add><span aria-hidden="true">+</span>${list.length ? 'Adicionar data' : 'Adicionar a primeira data'}</button></li>` : '';
+    section.innerHTML = `<div class="radar-head"><div>${heading(list.length ? 'Suas datas prioritárias' : 'Quando você quer viajar?')}${list.length ? '' : '<p>Escolha uma janela de datas e, se quiser, um destino. O radar procura essas datas primeiro.</p>'}</div>${tools}</div><ol class="priority-list">${cards}${add}</ol>`;
+  }
+
   function render() {
     refreshControls();
     renderMetrics();
+    renderRadar();
     const offers = filteredOffers();
     const groups = groupOffers(offers);
     $('#offersGrid').setAttribute('aria-busy', 'false');
@@ -239,8 +306,87 @@
   }
 
   function resetFilters() {
-    state = { ...state, payment: 'all', region: 'all', search: '', sort: 'price', budget: 100, direct: false, reposition: false };
+    state = { ...state, payment: 'all', region: 'all', search: '', sort: 'price', budget: 100, direct: false, reposition: false, priority: null };
     render();
+  }
+
+  async function loadAccount() {
+    try {
+      const me = await fetch('/.auth/me', { cache: 'no-store' });
+      if (!me.ok) throw new Error(`HTTP ${me.status}`);
+      const principal = (await me.json())?.clientPrincipal;
+      if (!principal) { account = { status: 'signed-out', user: null, profile: null, error: '' }; render(); return; }
+      account = { status: 'ready', user: principal, profile: null, error: '' };
+      const response = await fetch('/api/profile', { cache: 'no-store' });
+      const payload = await response.json().catch(() => ({}));
+      if (!response.ok) throw Object.assign(new Error(payload.error || `HTTP ${response.status}`), { fromProfile: true });
+      account.profile = payload.profile;
+    } catch (error) {
+      // Sem /.auth (servidor estático comum), o radar pessoal some; com login, mostramos o motivo.
+      if (account.status === 'ready') account.error = error.fromProfile ? `Seu radar pessoal ainda não está disponível: ${error.message}` : 'Não foi possível carregar seu radar pessoal agora. Tente novamente em instantes.';
+      else account = { status: 'unavailable', user: null, profile: null, error: '' };
+    }
+    render();
+  }
+
+  async function saveProfile(list) {
+    const response = await fetch('/api/profile', { method: 'PUT', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ priorities: list }) });
+    const payload = await response.json().catch(() => ({}));
+    if (response.status === 401) throw new Error('Sua sessão terminou. Entre novamente para salvar.');
+    if (!response.ok) throw new Error(payload.error || 'Não foi possível salvar agora. Tente novamente.');
+    account.profile = payload.profile;
+    if (!activePriority()) state.priority = null;
+    render();
+  }
+
+  function destinationOptions() {
+    const codes = new Map();
+    for (const offer of data.offers) if (offer.destinationCity) codes.set(cityCode(offer.destination), `${offer.destinationCity} · ${offer.destinationCountry || ''}`.replace(/ · $/, ''));
+    for (const [code, city] of Object.entries(cityNames)) if (!codes.has(cityCode(code))) codes.set(cityCode(code), city);
+    return [...codes].sort((a, b) => a[1].localeCompare(b[1], 'pt-BR')).map(([code, label]) => `<option value="${escape(code)}">${escape(label)}</option>`).join('');
+  }
+
+  function showPriorityForm(id) {
+    const existing = priorities().find((priority) => priority.id === id);
+    const today = todayIso();
+    const last = addDays(today, 365);
+    openDialog(`<h2>${existing ? 'Editar data prioritária' : 'Nova data prioritária'}</h2><p>Escolha quando você quer embarcar. O radar procura primeiro as datas com mais pessoas interessadas.</p><form class="priority-form" id="priorityForm" data-priority-id="${existing ? escape(existing.id) : ''}" novalidate><div class="form-row"><label>Saindo de<select name="origin"><option value="FOR">Fortaleza · FOR</option><option value="REC">Recife · REC</option></select></label><label>Destino<select name="destination"><option value="">Qualquer destino</option>${destinationOptions()}</select></label></div><div class="form-row"><label>Embarque a partir de<input type="date" name="from" min="${today}" max="${last}" required></label><label>Embarque até<input type="date" name="to" min="${today}" max="${last}" required></label></div><div class="form-row"><label>Pagamento<select name="payment">${Object.entries(paymentLabels).map(([value, label]) => `<option value="${value}">${label}</option>`).join('')}</select></label><label>Viagem<select name="tripType">${Object.entries(tripLabels).map(([value, label]) => `<option value="${value}">${label}</option>`).join('')}</select></label></div><p class="form-hint">Janela de até ${maxWindowDays} dias, nos próximos 12 meses.</p><p class="form-error" id="priorityError" role="alert" hidden></p><div class="dialog-footer"><button class="button-primary" type="submit">Salvar data</button><button class="text-button" type="button" data-close-dialog>Cancelar</button></div></form>`, 'SEU RADAR PESSOAL');
+    const form = $('#priorityForm');
+    const values = existing || { origin: state.origin, destination: null, from: '', to: '', payment: 'any', tripType: 'any' };
+    for (const field of ['origin', 'from', 'to', 'payment', 'tripType']) form.elements[field].value = values[field];
+    form.elements.destination.value = values.destination || '';
+    form.elements.from.addEventListener('change', () => { if (form.elements.from.value && (!form.elements.to.value || form.elements.to.value < form.elements.from.value)) form.elements.to.value = form.elements.from.value; });
+    form.elements.origin.focus();
+  }
+
+  async function submitPriority(form) {
+    const values = Object.fromEntries(new FormData(form));
+    const fail = (message) => { $('#priorityError').textContent = message; $('#priorityError').hidden = false; };
+    if (!values.from || !values.to) return fail('Escolha as duas datas de embarque.');
+    if (values.from < todayIso()) return fail('Escolha datas a partir de hoje.');
+    if (values.from > values.to) return fail('A primeira data precisa vir antes da segunda.');
+    if (daysBetween(values.from, values.to) > maxWindowDays) return fail(`Use uma janela de até ${maxWindowDays} dias.`);
+    if (values.destination === values.origin) return fail('Escolha um destino diferente da cidade de saída.');
+    const entry = { origin: values.origin, destination: values.destination || null, from: values.from, to: values.to, payment: values.payment, tripType: values.tripType };
+    const id = form.dataset.priorityId;
+    const list = id ? priorities().map((priority) => priority.id === id ? { ...entry, id } : priority) : [...priorities(), entry];
+    const submit = form.querySelector('[type="submit"]');
+    submit.disabled = true;
+    try {
+      await saveProfile(list);
+      $('#detailsDialog').close();
+      notify(id ? 'Data prioritária atualizada.' : 'Data salva. O radar vai procurar essas datas primeiro.');
+    } catch (error) { fail(error.message); submit.disabled = false; }
+  }
+
+  async function deleteProfile() {
+    const response = await fetch('/api/profile', { method: 'DELETE' });
+    if (!response.ok && response.status !== 404) { notify('Não foi possível excluir agora. Tente novamente.'); return; }
+    account.profile = null;
+    state.priority = null;
+    $('#detailsDialog').close();
+    render();
+    notify('Perfil excluído. Suas datas foram apagadas.');
   }
 
   function openDialog(content, eyebrow = 'ROTA LEVE') {
@@ -292,7 +438,7 @@
       openDialog(`<h2>Um caminho diferente pode valer a viagem.</h2>${positioning}`, 'NOVAS POSSIBILIDADES DE ROTA');
       return;
     }
-    openDialog(`<h2>Viajar leve começa com informação clara.</h2><p>O Rota Leve reúne preços anunciados em dinheiro e milhas saindo de Fortaleza e Recife, com links para você conferir cada oportunidade na fonte.</p><h3>O que significa uma oferta no radar?</h3><p>Uma publicação ou página de companhia pode anunciar uma tarifa que já não esteja disponível. Cada destino reúne as datas encontradas, e os detalhes de cada data mostram a fonte, o momento da observação e a condição do preço. A confirmação final acontece no site onde você fará a reserva.</p><h3>Atualização e cobertura</h3>${schedule}<p>${escape(data.coverage?.summary || 'A cobertura depende das fontes conectadas. Não há garantia de busca em todas as companhias ou programas de fidelidade.')}</p>${sourceList}<h3>Dinheiro e milhas</h3><p>Os valores são por pessoa, na modalidade indicada: só ida ou ida e volta. Em milhas, as taxas são exibidas separadamente quando informadas. A ordenação por menor preço mantém dinheiro e milhas em grupos, pois são unidades diferentes.</p>${positioning}<h3>Favoritas, sem conta</h3><p>As estrelas são salvas apenas neste navegador. Elas não reservam uma tarifa e não enviam alertas. Limpar os dados do navegador remove suas favoritas.</p>`, 'FONTES E METODOLOGIA');
+    openDialog(`<h2>Viajar leve começa com informação clara.</h2><p>O Rota Leve reúne preços anunciados em dinheiro e milhas saindo de Fortaleza e Recife, com links para você conferir cada oportunidade na fonte.</p><h3>O que significa uma oferta no radar?</h3><p>Uma publicação ou página de companhia pode anunciar uma tarifa que já não esteja disponível. Cada destino reúne as datas encontradas, e os detalhes de cada data mostram a fonte, o momento da observação e a condição do preço. A confirmação final acontece no site onde você fará a reserva.</p><h3>Atualização e cobertura</h3>${schedule}<p>${escape(data.coverage?.summary || 'A cobertura depende das fontes conectadas. Não há garantia de busca em todas as companhias ou programas de fidelidade.')}</p>${sourceList}<h3>Dinheiro e milhas</h3><p>Os valores são por pessoa, na modalidade indicada: só ida ou ida e volta. Em milhas, as taxas são exibidas separadamente quando informadas. A ordenação por menor preço mantém dinheiro e milhas em grupos, pois são unidades diferentes.</p>${positioning}<h3>Radar pessoal</h3><p>Com login Microsoft ou GitHub, você escolhe até ${maxPriorities} janelas de datas, com ou sem destino. Guardamos apenas um código derivado do login e essas datas, sem nome nem e-mail. O coletor e a pesquisa complementar recebem os pedidos somados e anônimos, com origem, destino, datas e quantas pessoas pediram, e procuram primeiro os mais pedidos. Você pode excluir o perfil a qualquer momento.</p><h3>Favoritas, sem conta</h3><p>As estrelas são salvas apenas neste navegador. Elas não reservam uma tarifa e não enviam alertas. Limpar os dados do navegador remove suas favoritas.</p>`, 'FONTES E METODOLOGIA');
   }
 
   async function loadOffers() {
@@ -313,8 +459,8 @@
     render();
   }
 
-  $$('.origin-choice').forEach((button) => button.addEventListener('click', () => { state.origin = button.dataset.origin; state.budget = 100; render(); }));
-  $('#originSelect').addEventListener('change', (event) => { state.origin = event.target.value; state.budget = 100; render(); });
+  $$('.origin-choice').forEach((button) => button.addEventListener('click', () => { state.origin = button.dataset.origin; state.budget = 100; state.priority = null; render(); }));
+  $('#originSelect').addEventListener('change', (event) => { state.origin = event.target.value; state.budget = 100; state.priority = null; render(); });
   $$('[data-payment]').forEach((button) => button.addEventListener('click', () => { state.payment = button.dataset.payment; state.budget = 100; render(); }));
   $('#destination').addEventListener('input', (event) => { state.search = event.target.value; render(); });
   $('#regionSelect').addEventListener('change', (event) => { state.region = event.target.value; render(); });
@@ -325,8 +471,38 @@
   $('#filterToggle').addEventListener('click', () => { const expanded = $('#filterToggle').getAttribute('aria-expanded') === 'true'; $('#filterToggle').setAttribute('aria-expanded', String(!expanded)); $('#advancedFilters').hidden = expanded; });
   $('#resetFilters').addEventListener('click', resetFilters);
   $('#emptyReset').addEventListener('click', () => { if (loadError) { loadOffers(); return; } if (state.favorites) state.favorites = false; resetFilters(); });
-  $('#navExplore').addEventListener('click', () => { state.favorites = false; render(); });
-  $('#navFavorites').addEventListener('click', () => { state.favorites = true; render(); $('#offersTitle').scrollIntoView({ behavior: 'smooth', block: 'start' }); });
+  $('#navExplore').addEventListener('click', () => { state.favorites = false; state.priority = null; render(); });
+  $('#navFavorites').addEventListener('click', () => { state.favorites = true; state.priority = null; render(); $('#offersTitle').scrollIntoView({ behavior: 'smooth', block: 'start' }); });
+  const goToRadar = () => { $('#personalRadar').scrollIntoView({ behavior: 'smooth', block: 'start' }); $('#radarTitle')?.focus({ preventScroll: true }); };
+  $('#navRadar').addEventListener('click', goToRadar);
+  $('#accountButton').addEventListener('click', goToRadar);
+  $('#clearPriority').addEventListener('click', () => { state.priority = null; render(); goToRadar(); });
+  $('#personalRadar').addEventListener('click', async (event) => {
+    const target = event.target.closest('button');
+    if (!target) return;
+    if (target.matches('[data-radar-add]')) { showPriorityForm(); return; }
+    if (target.dataset.radarEdit) { showPriorityForm(target.dataset.radarEdit); return; }
+    if (target.dataset.radarView) {
+      const priority = priorities().find((item) => item.id === target.dataset.radarView);
+      state = { ...state, origin: priority.origin, favorites: false, payment: 'all', search: '', budget: 100, direct: false, reposition: false, priority: priority.id };
+      render();
+      $('#offersTitle').scrollIntoView({ behavior: 'smooth', block: 'start' });
+      return;
+    }
+    if (target.dataset.radarRemove) {
+      target.disabled = true;
+      try { await saveProfile(priorities().filter((priority) => priority.id !== target.dataset.radarRemove)); notify('Data prioritária removida.'); }
+      catch (error) { notify(error.message); target.disabled = false; }
+      $('#radarTitle')?.focus({ preventScroll: true });
+      return;
+    }
+    if (target.matches('[data-radar-delete]')) openDialog('<h2>Excluir seu perfil?</h2><p>Suas datas prioritárias serão apagadas do radar e deixarão de orientar as buscas. As favoritas deste navegador continuam salvas.</p><div class="dialog-footer"><button class="button-danger" data-confirm-delete>Excluir perfil</button><button class="text-button" data-close-dialog>Cancelar</button></div>', 'SEU RADAR PESSOAL');
+  });
+  $('#dialogContent').addEventListener('click', (event) => {
+    if (event.target.closest('[data-close-dialog]')) $('#detailsDialog').close();
+    if (event.target.closest('[data-confirm-delete]')) deleteProfile();
+  });
+  $('#dialogContent').addEventListener('submit', (event) => { if (event.target.id !== 'priorityForm') return; event.preventDefault(); submitPriority(event.target); });
   ['#navHow', '#helpButton', '#coverageButton'].forEach((selector) => $(selector).addEventListener('click', () => showMethodology()));
   $('#repositionLearn').addEventListener('click', () => showMethodology('reposition'));
   $('#closeDialog').addEventListener('click', () => $('#detailsDialog').close());
@@ -361,4 +537,5 @@
   setInterval(() => { if (!document.hidden) render(); }, 60 * 1000);
   setInterval(() => { if (!document.hidden) loadOffers(); }, 5 * 60 * 1000);
   loadOffers();
+  loadAccount();
 })();

@@ -7,9 +7,45 @@
     "Content-Security-Policy": "default-src 'self'; img-src 'self' https://images.unsplash.com data:; style-src 'self' https://fonts.googleapis.com; font-src 'self' https://fonts.gstatic.com; script-src 'self'; connect-src 'self'; frame-ancestors 'none'; base-uri 'self'; form-action 'self'"
   },
   "routes": [
-    { "route": "/data/*", "headers": { "Cache-Control": "public, max-age=60, must-revalidate" } },
-    { "route": "/*", "headers": { "Cache-Control": "public, max-age=300" } }
+    {
+      "route": "/api/profile",
+      "allowedRoles": [
+        "authenticated"
+      ],
+      "headers": {
+        "Cache-Control": "no-store"
+      }
+    },
+    {
+      "route": "/api/demand",
+      "headers": {
+        "Cache-Control": "public, max-age=300"
+      }
+    },
+    {
+      "route": "/.auth/*",
+      "headers": {
+        "Cache-Control": "no-store"
+      }
+    },
+    {
+      "route": "/data/*",
+      "headers": {
+        "Cache-Control": "public, max-age=60, must-revalidate"
+      }
+    },
+    {
+      "route": "/*",
+      "headers": {
+        "Cache-Control": "public, max-age=300"
+      }
+    }
   ],
-  "mimeTypes": { ".json": "application/json", ".svg": "image/svg+xml" },
-  "platform": { "apiRuntime": "node:22" }
+  "mimeTypes": {
+    ".json": "application/json",
+    ".svg": "image/svg+xml"
+  },
+  "platform": {
+    "apiRuntime": "node:22"
+  }
 }

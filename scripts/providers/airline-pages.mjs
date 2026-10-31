@@ -18,6 +18,35 @@ function sourceAllowed(source) {
   return source && source.enabled === true && source.automatic === true && source.allowed === true && source.official === true && source.kind === 'airline-page' && officialUrl(source.url) && typeof source.airline === 'string';
 }
 
+// Aeroportos da mesma cidade contam como o mesmo destino pedido nos perfis (mesma tabela do site).
+const METRO = {GRU:'SAO',CGH:'SAO',GIG:'RIO',SDU:'RIO',CDG:'PAR',ORY:'PAR',EZE:'BUE',AEP:'BUE',CNF:'BHZ',LHR:'LON',LGW:'LON',JFK:'NYC',EWR:'NYC',NRT:'TYO',HND:'TYO',DSS:'DKR'};
+const cityCode = code => METRO[code] || code;
+const slug = value => String(value).normalize('NFD').replace(/[̀-ͯ]/g,'').toLowerCase().replace(/[^a-z0-9]+/g,'-').replace(/^-|-$/g,'');
+const CITIES = new Map();
+for (const [code,[city]] of Object.entries(AIRPORTS)) {
+  if (!CITIES.has(slug(city))) CITIES.set(slug(city),{city,codes:new Set()});
+  CITIES.get(slug(city)).codes.add(cityCode(code));
+}
+
+/** Links de rota que a própria companhia publica na página de origem, como voos-de-fortaleza-para-lisboa. */
+export function routeLinks(html, source) {
+  const {hostname:host,pathname} = new URL(source.url);
+  // Mesmo mercado da página de origem (pt_br, pt, br...): outros mercados cobram em outra moeda.
+  const market = pathname.split('/')[1];
+  const links = new Map();
+  for (const [,href] of String(html).matchAll(/href\s*=\s*["']([^"'#?\s]+)["']/gi)) {
+    const match = /(?:^|\/)(?:voos|passagens)-de-([a-z-]+?)-para-([a-z-]+)$/.exec(href);
+    if (!match) continue;
+    let url;
+    try { url = new URL(href, source.url).href; } catch { continue; }
+    if (!officialUrl(url) || new URL(url).hostname !== host || new URL(url).pathname.split('/')[1] !== market) continue;
+    const origin = [...(CITIES.get(match[1])?.codes || [])].find(code => code === 'FOR' || code === 'REC');
+    const destination = CITIES.get(match[2]);
+    if (origin && destination) links.set(url,{url,origin,city:destination.city,destinations:[...destination.codes]});
+  }
+  return [...links.values()];
+}
+
 export function parseAirlinePage(html, { source, now = new Date() } = {}) {
   if (!sourceAllowed(source)) throw new Error('Fonte não autorizada para coleta automática.');
   if (typeof html !== 'string' || html.length > 8_000_000) throw new Error('Página vazia ou maior que o limite de 8 MB.');
@@ -67,31 +96,53 @@ export function parseAirlinePage(html, { source, now = new Date() } = {}) {
   return [...offers.values()];
 }
 
-export async function collectAirlinePages({ fetchImpl = fetch, now = new Date(), sources = [] } = {}) {
+async function readSource({ fetchImpl, now, source, record, result }) {
+  try {
+    const response = await fetchImpl(source.url, {headers:{Accept:'text/html','User-Agent':'RotaLeveRadar/1.0 (public advertised fares; 4 checks/day)'},signal:AbortSignal.timeout(25000),redirect:'error'});
+    if (!response.ok) throw new Error(`HTTP ${response.status}.`);
+    if (response.url && !officialUrl(response.url)) throw new Error('Resposta fora do domínio oficial.');
+    const contentType = response.headers?.get?.('content-type');
+    if (contentType && !contentType.includes('text/html')) throw new Error('Resposta não é HTML.');
+    const length = Number(response.headers?.get?.('content-length') || 0);
+    if (length > 8_000_000) throw new Error('Resposta maior que o limite de 8 MB.');
+    const html = await response.text();
+    try {
+      const offers = parseAirlinePage(html,{source,now});
+      record.count = offers.length;
+      record.status = offers.length ? 'ok' : 'unparsed';
+      if (!offers.length) record.error = 'Nenhuma tarifa completa e futura em BRL/econômica reconhecida.';
+      result.offers.push(...offers);
+    } catch (error) { record.status = 'unparsed'; record.error = error.message; }
+    return html;
+  } catch (error) { record.error = error.name === 'TimeoutError' ? 'A consulta excedeu 25 segundos.' : error.message; return null; }
+}
+
+export async function collectAirlinePages({ fetchImpl = fetch, now = new Date(), sources = [], demand = [] } = {}) {
   const result = {offers:[],sources:[]};
   // At most ten public pages per run, requested sequentially, four checks a day.
   const selected = sources.filter(sourceAllowed).slice(0,10);
+  const links = [];
   for (const source of selected) {
     const record = {id:source.id,name:source.name,url:source.url,status:'error',count:0};
-    try {
-      const response = await fetchImpl(source.url, {headers:{Accept:'text/html','User-Agent':'RotaLeveRadar/1.0 (public advertised fares; 4 checks/day)'},signal:AbortSignal.timeout(25000),redirect:'error'});
-      if (!response.ok) throw new Error(`HTTP ${response.status}.`);
-      if (response.url && !officialUrl(response.url)) throw new Error('Resposta fora do domínio oficial.');
-      const contentType = response.headers?.get?.('content-type');
-      if (contentType && !contentType.includes('text/html')) throw new Error('Resposta não é HTML.');
-      const length = Number(response.headers?.get?.('content-length') || 0);
-      if (length > 8_000_000) throw new Error('Resposta maior que o limite de 8 MB.');
-      const html = await response.text();
-      try {
-        const offers = parseAirlinePage(html,{source,now});
-        record.count = offers.length;
-        record.status = offers.length ? 'ok' : 'unparsed';
-        if (!offers.length) record.error = 'Nenhuma tarifa completa e futura em BRL/econômica reconhecida.';
-        result.offers.push(...offers);
-      } catch (error) { record.status = 'unparsed'; record.error = error.message; }
-    } catch (error) { record.error = error.name === 'TimeoutError' ? 'A consulta excedeu 25 segundos.' : error.message; }
+    const html = await readSource({fetchImpl,now,source,record,result});
+    if (html && demand.length) links.push(...routeLinks(html,source).map(link => ({...link,source})));
     result.sources.push(record);
     // Sequential requests, no aggressive retries; provider failures wait until next run.
+  }
+  // Até oito páginas de rota por coleta para os destinos dos perfis, começando pelos mais pedidos.
+  // A página de origem mostra uma data por destino; a de rota costuma trazer o calendário inteiro.
+  const routes = new Map();
+  for (const wish of demand) {
+    for (const link of links) {
+      if (routes.size >= 8) break;
+      if (wish.destination && link.origin === wish.origin && link.destinations.includes(wish.destination) && !routes.has(link.url) && !selected.some(source => source.url === link.url)) routes.set(link.url,link);
+    }
+  }
+  for (const link of routes.values()) {
+    const source = {...link.source,id:`${link.source.id}-${slug(link.city)}`,name:`${link.source.airline} · ${AIRPORTS[link.origin][0]} → ${link.city}`,url:link.url};
+    const record = {id:source.id,name:source.name,url:source.url,status:'error',count:0,priority:true};
+    await readSource({fetchImpl,now,source,record,result});
+    result.sources.push(record);
   }
   return result;
 }

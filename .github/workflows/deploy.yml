@@ -5,6 +5,7 @@ on:
     branches: [main]
     paths:
       - 'site/**'
+      - 'api/**'
       - 'config/azure-deployment.json'
       - '.github/workflows/deploy.yml'
   workflow_dispatch:
@@ -37,6 +38,9 @@ jobs:
         uses: actions/setup-node@v4
         with:
           node-version: '22'
+
+      - name: Instalar dependências da API
+        run: npm ci --omit=dev --prefix api
 
       - name: Validar catálogo e comparações
         run: npm run check && npm test
@@ -81,13 +85,14 @@ jobs:
           echo "token=$deployment_token" >> "$GITHUB_OUTPUT"
           unset deployment_token
 
-      - name: Publicar site estatico
+      - name: Publicar site e API de perfis
         uses: Azure/static-web-apps-deploy@v1
         with:
           azure_static_web_apps_api_token: ${{ steps.deployment.outputs.token }}
           action: upload
           app_location: site
-          api_location: ''
+          # A API vai com node_modules já instalados acima; skip_api_build evita um segundo build no Oryx.
+          api_location: api
           output_location: ''
           skip_app_build: true
           skip_api_build: true
